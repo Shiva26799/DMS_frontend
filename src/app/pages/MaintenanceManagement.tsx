@@ -1,0 +1,295 @@
+import { useState } from "react";
+import { Filter, Search, Calendar, AlertTriangle, CheckCircle } from "lucide-react";
+import { Button } from "../components/ui/button";
+import { Card } from "../components/ui/card";
+import { StatusBadge } from "../components/StatusBadge";
+import { mockMaintenanceRecords } from "../data/mockData";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import { Input } from "../components/ui/input";
+
+export function MaintenanceManagement() {
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterType, setFilterType] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredRecords = mockMaintenanceRecords.filter((record) => {
+    const matchesStatus = filterStatus === "all" || record.status.toLowerCase() === filterStatus;
+    const matchesType = filterType === "all" || record.serviceType === filterType;
+    const matchesSearch =
+      record.productSerial.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      record.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      record.dealer.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesType && matchesSearch;
+  });
+
+  const upcomingCount = mockMaintenanceRecords.filter(
+    (r) => r.status === "Upcoming"
+  ).length;
+  const overdueCount = mockMaintenanceRecords.filter(
+    (r) => r.status === "Overdue"
+  ).length;
+  const completedCount = mockMaintenanceRecords.filter(
+    (r) => r.status === "Completed"
+  ).length;
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Maintenance Management
+          </h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Preventive maintenance tracking and scheduling
+          </p>
+        </div>
+        <Button className="bg-blue-600 hover:bg-blue-700">
+          <Calendar className="w-4 h-4 mr-2" />
+          Schedule Service
+        </Button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="p-4">
+          <p className="text-sm text-gray-600">Total Services</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">
+            {mockMaintenanceRecords.length}
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-sm text-gray-600">Upcoming</p>
+          <div className="flex items-center gap-2 mt-1">
+            <Calendar className="w-5 h-5 text-blue-500" />
+            <p className="text-2xl font-bold text-blue-600">{upcomingCount}</p>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <p className="text-sm text-gray-600">Overdue</p>
+          <div className="flex items-center gap-2 mt-1">
+            <AlertTriangle className="w-5 h-5 text-red-500" />
+            <p className="text-2xl font-bold text-red-600">{overdueCount}</p>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <p className="text-sm text-gray-600">Completed</p>
+          <div className="flex items-center gap-2 mt-1">
+            <CheckCircle className="w-5 h-5 text-green-500" />
+            <p className="text-2xl font-bold text-green-600">{completedCount}</p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex-1 min-w-[200px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search maintenance records..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-[180px]">
+              <Filter className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="upcoming">Upcoming</SelectItem>
+              <SelectItem value="overdue">Overdue</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={filterType} onValueChange={setFilterType}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Service Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="3-Month">3-Month Service</SelectItem>
+              <SelectItem value="6-Month">6-Month Service</SelectItem>
+              <SelectItem value="500-Hour">500-Hour Service</SelectItem>
+              <SelectItem value="1000-Hour">1000-Hour Service</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </Card>
+
+      {/* Maintenance Table */}
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Serial Number
+                </th>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Product
+                </th>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Dealer
+                </th>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Service Type
+                </th>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Due Date
+                </th>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Last Service
+                </th>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Status
+                </th>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {filteredRecords.map((record) => {
+                const dueDate = new Date(record.dueDate);
+                const today = new Date();
+                const daysUntilDue = Math.ceil(
+                  (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+                );
+
+                return (
+                  <tr key={record.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <span className="text-sm font-mono font-medium text-gray-900">
+                        {record.productSerial}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {record.productName}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {record.dealer}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                        {record.serviceType}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {record.dueDate}
+                        </p>
+                        {record.status === "Upcoming" && daysUntilDue <= 7 && (
+                          <p className="text-xs text-orange-600">
+                            Due in {daysUntilDue} days
+                          </p>
+                        )}
+                        {record.status === "Overdue" && (
+                          <p className="text-xs text-red-600">
+                            Overdue by {Math.abs(daysUntilDue)} days
+                          </p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {record.lastServiceDate || "N/A"}
+                    </td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={record.status} />
+                    </td>
+                    <td className="px-6 py-4">
+                      {record.status === "Completed" ? (
+                        <Button variant="outline" size="sm">
+                          View Details
+                        </Button>
+                      ) : (
+                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                          Complete Service
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Upcoming Services Alert */}
+      {upcomingCount > 0 && (
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-6 h-6 text-orange-500" />
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Upcoming Services
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {upcomingCount} services need attention
+                </p>
+              </div>
+            </div>
+            <Button variant="outline">Send Reminders</Button>
+          </div>
+          <div className="space-y-3">
+            {mockMaintenanceRecords
+              .filter((r) => r.status === "Upcoming")
+              .map((record) => {
+                const dueDate = new Date(record.dueDate);
+                const today = new Date();
+                const daysUntilDue = Math.ceil(
+                  (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+                );
+
+                return (
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between border border-gray-200 rounded-lg p-4"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {record.productName} - {record.serviceType}
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Dealer: {record.dealer} • Serial: {record.productSerial}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-900">
+                        {record.dueDate}
+                      </p>
+                      <p
+                        className={`text-xs ${
+                          daysUntilDue <= 7
+                            ? "text-orange-600"
+                            : "text-gray-600"
+                        }`}
+                      >
+                        {daysUntilDue > 0
+                          ? `Due in ${daysUntilDue} days`
+                          : "Due today"}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
