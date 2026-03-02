@@ -1,5 +1,19 @@
 // Mock data for the DMS system
 
+// Warehouse interface
+export interface Warehouse {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  adminName: string;
+  adminContact: string;
+  adminEmail: string;
+  status: "Active" | "Inactive";
+}
+
 export interface Lead {
   id: string;
   customerName: string;
@@ -51,8 +65,9 @@ export interface InventoryItem {
   id: string;
   sku: string;
   productName: string;
-  location: "Factory" | "Regional Warehouse" | "Dealer Warehouse";
-  locationName: string;
+  category: "Harvester" | "Spare Part";
+  warehouseId: string;
+  warehouseName: string;
   available: number;
   reserved: number;
   reorderLevel: number;
@@ -355,8 +370,9 @@ export const mockInventory: InventoryItem[] = [
     id: "INV001",
     sku: "HP-2000",
     productName: "LOVOL HP-2000 Harvester",
-    location: "Factory",
-    locationName: "Main Factory - Delhi",
+    category: "Harvester",
+    warehouseId: "W001",
+    warehouseName: "Main Factory - Delhi",
     available: 15,
     reserved: 3,
     reorderLevel: 10,
@@ -366,8 +382,9 @@ export const mockInventory: InventoryItem[] = [
     id: "INV002",
     sku: "HP-3000",
     productName: "LOVOL HP-3000 Harvester",
-    location: "Factory",
-    locationName: "Main Factory - Delhi",
+    category: "Harvester",
+    warehouseId: "W001",
+    warehouseName: "Main Factory - Delhi",
     available: 8,
     reserved: 2,
     reorderLevel: 8,
@@ -377,8 +394,9 @@ export const mockInventory: InventoryItem[] = [
     id: "INV003",
     sku: "HP-4000",
     productName: "LOVOL HP-4000 Harvester",
-    location: "Factory",
-    locationName: "Main Factory - Delhi",
+    category: "Harvester",
+    warehouseId: "W001",
+    warehouseName: "Main Factory - Delhi",
     available: 5,
     reserved: 1,
     reorderLevel: 6,
@@ -388,8 +406,9 @@ export const mockInventory: InventoryItem[] = [
     id: "INV004",
     sku: "HP-2000",
     productName: "LOVOL HP-2000 Harvester",
-    location: "Regional Warehouse",
-    locationName: "Punjab Regional Hub",
+    category: "Harvester",
+    warehouseId: "W002",
+    warehouseName: "Punjab Regional Hub",
     available: 4,
     reserved: 1,
     reorderLevel: 3,
@@ -399,8 +418,9 @@ export const mockInventory: InventoryItem[] = [
     id: "INV005",
     sku: "SP-ENG-001",
     productName: "Engine Oil Filter",
-    location: "Factory",
-    locationName: "Main Factory - Delhi",
+    category: "Spare Part",
+    warehouseId: "W001",
+    warehouseName: "Main Factory - Delhi",
     available: 150,
     reserved: 20,
     reorderLevel: 50,
@@ -410,8 +430,9 @@ export const mockInventory: InventoryItem[] = [
     id: "INV006",
     sku: "SP-BLD-002",
     productName: "Cutting Blade Set",
-    location: "Factory",
-    locationName: "Main Factory - Delhi",
+    category: "Spare Part",
+    warehouseId: "W001",
+    warehouseName: "Main Factory - Delhi",
     available: 80,
     reserved: 15,
     reorderLevel: 30,
@@ -421,8 +442,9 @@ export const mockInventory: InventoryItem[] = [
     id: "INV007",
     sku: "SP-ENG-001",
     productName: "Engine Oil Filter",
-    location: "Regional Warehouse",
-    locationName: "Haryana Regional Hub",
+    category: "Spare Part",
+    warehouseId: "W002",
+    warehouseName: "Haryana Regional Hub",
     available: 25,
     reserved: 5,
     reorderLevel: 20,
@@ -619,5 +641,69 @@ export const mockMaintenanceRecords: MaintenanceRecord[] = [
     dueDate: "2026-03-20",
     status: "Upcoming",
     lastServiceDate: "2025-09-15",
+  },
+];
+
+// Mock Warehouses
+export const mockWarehouses: Warehouse[] = [
+  {
+    id: "W001",
+    name: "Central Warehouse - Delhi",
+    address: "Plot No. 45, Industrial Area",
+    city: "New Delhi",
+    state: "Delhi",
+    pincode: "110001",
+    adminName: "Vikram Singh",
+    adminContact: "+91-9876543220",
+    adminEmail: "vikram.singh@lovol.com",
+    status: "Active",
+  },
+  {
+    id: "W002",
+    name: "Regional Warehouse - Mumbai",
+    address: "Godown No. 12, MIDC Area",
+    city: "Mumbai",
+    state: "Maharashtra",
+    pincode: "400001",
+    adminName: "Deepak Joshi",
+    adminContact: "+91-9876543221",
+    adminEmail: "deepak.joshi@lovol.com",
+    status: "Active",
+  },
+  {
+    id: "W003",
+    name: "Regional Warehouse - Bangalore",
+    address: "Site No. 78, Electronic City",
+    city: "Bangalore",
+    state: "Karnataka",
+    pincode: "560100",
+    adminName: "Suresh Kumar",
+    adminContact: "+91-9876543222",
+    adminEmail: "suresh.kumar@lovol.com",
+    status: "Active",
+  },
+  {
+    id: "W004",
+    name: "Punjab Regional Hub",
+    address: "Plot No. 23, Industrial Zone",
+    city: "Ludhiana",
+    state: "Punjab",
+    pincode: "141001",
+    adminName: "Gurpreet Singh",
+    adminContact: "+91-9876543223",
+    adminEmail: "gurpreet.singh@lovol.com",
+    status: "Active",
+  },
+  {
+    id: "W005",
+    name: "Haryana Regional Hub",
+    address: "Plot No. 67, HSIIDC Area",
+    city: "Karnal",
+    state: "Haryana",
+    pincode: "132001",
+    adminName: "Rohit Sharma",
+    adminContact: "+91-9876543224",
+    adminEmail: "rohit.sharma@lovol.com",
+    status: "Active",
   },
 ];

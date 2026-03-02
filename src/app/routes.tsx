@@ -14,6 +14,7 @@ import { WarrantyManagement } from "./pages/WarrantyManagement";
 import { WarrantyDetail } from "./pages/WarrantyDetail";
 import { MaintenanceManagement } from "./pages/MaintenanceManagement";
 import { Reports } from "./pages/Reports";
+import { Settings } from "./pages/Settings";
 
 export const router = createBrowserRouter([
   {
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
       { path: "warranty/:id", Component: WarrantyDetail },
       { path: "maintenance", Component: MaintenanceManagement },
       { path: "reports", Component: Reports },
+      { path: "settings", Component: Settings },
     ],
   },
 ]);

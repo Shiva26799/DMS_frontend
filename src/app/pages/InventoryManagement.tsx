@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Filter, Search, Download, AlertTriangle } from "lucide-react";
+import { Filter, Search, Download, AlertTriangle, Edit, Package2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
-import { mockInventory } from "../data/mockData";
+import { mockInventory, mockWarehouses } from "../data/mockData";
 import {
   Select,
   SelectContent,
@@ -12,29 +12,98 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import { toast } from "sonner";
 
 export function InventoryManagement() {
-  const [filterLocation, setFilterLocation] = useState<string>("all");
+  const [filterWarehouse, setFilterWarehouse] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [inventory, setInventory] = useState(mockInventory);
+  const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [updateForm, setUpdateForm] = useState({
+    available: 0,
+    reserved: 0,
+    reorderLevel: 0,
+    warehouseId: "",
+  });
 
-  const filteredInventory = mockInventory.filter((item) => {
-    const matchesLocation = filterLocation === "all" || item.location === filterLocation;
+  const filteredInventory = inventory.filter((item) => {
+    const matchesWarehouse = filterWarehouse === "all" || item.warehouseId === filterWarehouse;
+    const matchesCategory = filterCategory === "all" || item.category === filterCategory;
     const matchesStatus = filterStatus === "all" || item.status.toLowerCase() === filterStatus;
     const matchesSearch =
       item.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesLocation && matchesStatus && matchesSearch;
+    return matchesWarehouse && matchesCategory && matchesStatus && matchesSearch;
   });
 
-  const totalValue = mockInventory.reduce((sum, item) => {
-    // Rough estimate: assuming average price of 50,000 per unit
-    return sum + item.available * 50000;
+  const totalValue = inventory.reduce((sum, item) => {
+    // Rough estimate based on category
+    const estimatedPrice = item.category === "Harvester" ? 2000000 : 5000;
+    return sum + item.available * estimatedPrice;
   }, 0);
 
-  const lowStockCount = mockInventory.filter(
+  const lowStockCount = inventory.filter(
     (item) => item.status === "Low" || item.status === "Critical"
   ).length;
+
+  const handleOpenUpdateDialog = (item: any) => {
+    setSelectedItem(item);
+    setUpdateForm({
+      available: item.available,
+      reserved: item.reserved,
+      reorderLevel: item.reorderLevel,
+      warehouseId: item.warehouseId,
+    });
+    setIsUpdateDialogOpen(true);
+  };
+
+  const handleUpdateStock = () => {
+    if (!selectedItem) return;
+
+    // Calculate new status
+    let newStatus: "Normal" | "Low" | "Critical" | "Out of Stock" = "Normal";
+    if (updateForm.available === 0) {
+      newStatus = "Out of Stock";
+    } else if (updateForm.available <= updateForm.reorderLevel * 0.5) {
+      newStatus = "Critical";
+    } else if (updateForm.available <= updateForm.reorderLevel) {
+      newStatus = "Low";
+    }
+
+    const warehouseName = mockWarehouses.find(w => w.id === updateForm.warehouseId)?.name || selectedItem.warehouseName;
+
+    setInventory(
+      inventory.map((item) =>
+        item.id === selectedItem.id
+          ? {
+              ...item,
+              available: updateForm.available,
+              reserved: updateForm.reserved,
+              reorderLevel: updateForm.reorderLevel,
+              warehouseId: updateForm.warehouseId,
+              warehouseName: warehouseName,
+              status: newStatus,
+            }
+          : item
+      )
+    );
+
+    toast.success("Inventory updated successfully");
+    setIsUpdateDialogOpen(false);
+    setSelectedItem(null);
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -45,7 +114,7 @@ export function InventoryManagement() {
             Inventory Management
           </h1>
           <p className="text-sm text-gray-600 mt-1">
-            Multi-location inventory tracking
+            Multi-warehouse inventory tracking for harvesters and spare parts
           </p>
         </div>
         <Button className="bg-blue-600 hover:bg-blue-700">
@@ -59,7 +128,7 @@ export function InventoryManagement() {
         <Card className="p-4">
           <p className="text-sm text-gray-600">Total SKUs</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">
-            {mockInventory.length}
+            {inventory.length}
           </p>
         </Card>
         <Card className="p-4">
@@ -76,9 +145,9 @@ export function InventoryManagement() {
           </div>
         </Card>
         <Card className="p-4">
-          <p className="text-sm text-gray-600">Storage Locations</p>
+          <p className="text-sm text-gray-600">Active Warehouses</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">
-            {new Set(mockInventory.map((i) => i.locationName)).size}
+            {mockWarehouses.filter(w => w.status === "Active").length}
           </p>
         </Card>
       </div>
@@ -97,18 +166,28 @@ export function InventoryManagement() {
               />
             </div>
           </div>
-          <Select value={filterLocation} onValueChange={setFilterLocation}>
-            <SelectTrigger className="w-[200px]">
+          <Select value={filterWarehouse} onValueChange={setFilterWarehouse}>
+            <SelectTrigger className="w-[220px]">
               <Filter className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Location" />
+              <SelectValue placeholder="Warehouse" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Locations</SelectItem>
-              <SelectItem value="Factory">Factory</SelectItem>
-              <SelectItem value="Regional Warehouse">
-                Regional Warehouse
-              </SelectItem>
-              <SelectItem value="Dealer Warehouse">Dealer Warehouse</SelectItem>
+              <SelectItem value="all">All Warehouses</SelectItem>
+              {mockWarehouses.map((warehouse) => (
+                <SelectItem key={warehouse.id} value={warehouse.id}>
+                  {warehouse.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={filterCategory} onValueChange={setFilterCategory}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              <SelectItem value="Harvester">Harvesters</SelectItem>
+              <SelectItem value="Spare Part">Spare Parts</SelectItem>
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -120,7 +199,7 @@ export function InventoryManagement() {
               <SelectItem value="normal">Normal</SelectItem>
               <SelectItem value="low">Low Stock</SelectItem>
               <SelectItem value="critical">Critical</SelectItem>
-              <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+              <SelectItem value="out of stock">Out of Stock</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -139,7 +218,10 @@ export function InventoryManagement() {
                   Product Name
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
-                  Location
+                  Category
+                </th>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Warehouse Location
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                   Available
@@ -166,15 +248,29 @@ export function InventoryManagement() {
                       {item.sku}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {item.productName}
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <Package2 className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm text-gray-900">{item.productName}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      item.category === "Harvester" 
+                        ? "bg-blue-100 text-blue-700" 
+                        : "bg-purple-100 text-purple-700"
+                    }`}>
+                      {item.category}
+                    </span>
                   </td>
                   <td className="px-6 py-4">
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {item.location}
+                        {item.warehouseName}
                       </p>
-                      <p className="text-xs text-gray-500">{item.locationName}</p>
+                      <p className="text-xs text-gray-500">
+                        {mockWarehouses.find(w => w.id === item.warehouseId)?.city}
+                      </p>
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -200,8 +296,13 @@ export function InventoryManagement() {
                     <StatusBadge status={item.status} />
                   </td>
                   <td className="px-6 py-4">
-                    <Button variant="outline" size="sm">
-                      Update Stock
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenUpdateDialog(item)}
+                    >
+                      <Edit className="w-4 h-4 mr-1" />
+                      Update
                     </Button>
                   </td>
                 </tr>
@@ -222,7 +323,7 @@ export function InventoryManagement() {
           </Button>
         </div>
         <div className="space-y-3">
-          {mockInventory
+          {inventory
             .filter(
               (item) =>
                 item.status === "Low" ||
@@ -246,7 +347,9 @@ export function InventoryManagement() {
                     <p className="text-sm font-medium text-gray-900">
                       {item.sku} - {item.productName}
                     </p>
-                    <p className="text-xs text-gray-500">{item.locationName}</p>
+                    <p className="text-xs text-gray-500">
+                      {item.warehouseName}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -262,6 +365,136 @@ export function InventoryManagement() {
             ))}
         </div>
       </Card>
+
+      {/* Update Stock Dialog */}
+      <Dialog open={isUpdateDialogOpen} onOpenChange={setIsUpdateDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Update Inventory Stock</DialogTitle>
+            <DialogDescription>
+              Update stock levels and warehouse location for {selectedItem?.productName}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="available">Available Quantity *</Label>
+                <Input
+                  id="available"
+                  type="number"
+                  value={updateForm.available}
+                  onChange={(e) =>
+                    setUpdateForm({ ...updateForm, available: parseInt(e.target.value) || 0 })
+                  }
+                  min="0"
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="reserved">Reserved Quantity</Label>
+                <Input
+                  id="reserved"
+                  type="number"
+                  value={updateForm.reserved}
+                  onChange={(e) =>
+                    setUpdateForm({ ...updateForm, reserved: parseInt(e.target.value) || 0 })
+                  }
+                  min="0"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="reorder">Reorder Level *</Label>
+              <Input
+                id="reorder"
+                type="number"
+                value={updateForm.reorderLevel}
+                onChange={(e) =>
+                  setUpdateForm({ ...updateForm, reorderLevel: parseInt(e.target.value) || 0 })
+                }
+                min="0"
+                className="mt-1"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                System will alert when stock falls below this level
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="warehouse">Warehouse Location *</Label>
+              <Select
+                value={updateForm.warehouseId}
+                onValueChange={(value) =>
+                  setUpdateForm({ ...updateForm, warehouseId: value })
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select warehouse" />
+                </SelectTrigger>
+                <SelectContent>
+                  {mockWarehouses
+                    .filter(w => w.status === "Active")
+                    .map((warehouse) => (
+                      <SelectItem key={warehouse.id} value={warehouse.id}>
+                        <div>
+                          <div className="font-medium">{warehouse.name}</div>
+                          <div className="text-xs text-gray-500">
+                            {warehouse.city}, {warehouse.state}
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Status Preview */}
+            <div className="border-t pt-4">
+              <Label className="text-xs text-gray-500">Status Preview</Label>
+              <div className="mt-2 flex items-center gap-2">
+                <StatusBadge 
+                  status={
+                    updateForm.available === 0
+                      ? "Out of Stock"
+                      : updateForm.available <= updateForm.reorderLevel * 0.5
+                      ? "Critical"
+                      : updateForm.available <= updateForm.reorderLevel
+                      ? "Low"
+                      : "Normal"
+                  } 
+                />
+                <span className="text-sm text-gray-600">
+                  {updateForm.available > updateForm.reorderLevel
+                    ? "Stock level is healthy"
+                    : updateForm.available > 0
+                    ? "Reorder recommended"
+                    : "Out of stock - urgent action required"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsUpdateDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateStock}
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={!updateForm.warehouseId}
+            >
+              Update Inventory
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

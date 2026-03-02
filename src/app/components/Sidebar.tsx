@@ -10,6 +10,7 @@ import {
   Wrench,
   BarChart3,
   ChevronDown,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -29,6 +30,7 @@ const navigation = [
   { name: "Warranty Management", href: "/warranty", icon: Shield },
   { name: "Maintenance", href: "/maintenance", icon: Wrench },
   { name: "Reports", href: "/reports", icon: BarChart3 },
+  { name: "Settings", href: "/settings", icon: SettingsIcon },
 ];
 
 export function Sidebar() {
