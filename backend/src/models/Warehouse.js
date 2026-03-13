@@ -15,4 +15,4 @@ const warehouseSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-export const Warehouse = mongoose.model("Warehouse", warehouseSchema);
+export const Warehouse = mongoose.models.Warehouse || mongoose.model("Warehouse", warehouseSchema);

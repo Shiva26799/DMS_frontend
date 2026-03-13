@@ -81,9 +81,12 @@ app.get("/api/health", (req, res) => {
         message: "Backend is reachable",
         timestamp: new Date().toISOString(),
         vercel: !!process.env.VERCEL,
+        dbStatus: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+        dbState: mongoose.connection.readyState,
         env: process.env.NODE_ENV
     });
 });
+
 
 // Routes - Support both /api/path and /path for Vercel flexibility
 const mountRoutes = (prefix = "") => {
