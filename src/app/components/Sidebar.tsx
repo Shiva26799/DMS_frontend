@@ -56,7 +56,7 @@ export function Sidebar() {
       <div className="h-24 flex items-center px-6 border-b border-gray-200">
         <div className="flex items-center gap-3">
           <img
-            src="http://localhost:5000/public/logo.png"
+            src="/logo.png"
             alt="Logo"
             className="w-20 h-20 object-contain rounded-lg"
             onError={(e) => {
