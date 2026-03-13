@@ -1,5 +1,7 @@
 import { createBrowserRouter } from "react-router";
 import { Layout } from "./components/Layout";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { Login } from "./pages/Login";
 import { ExecutiveDashboard } from "./pages/ExecutiveDashboard";
 import { LeadManagement } from "./pages/LeadManagement";
 import { LeadDetail } from "./pages/LeadDetail";
@@ -18,24 +20,34 @@ import { Settings } from "./pages/Settings";
 
 export const router = createBrowserRouter([
   {
+    path: "/login",
+    Component: Login,
+  },
+  {
     path: "/",
-    Component: Layout,
+    Component: ProtectedRoute,
     children: [
-      { index: true, Component: ExecutiveDashboard },
-      { path: "leads", Component: LeadManagement },
-      { path: "leads/:id", Component: LeadDetail },
-      { path: "dealers", Component: DealerManagement },
-      { path: "dealers/:id", Component: DealerDetail },
-      { path: "products", Component: ProductCatalogue },
-      { path: "products/:id", Component: ProductDetail },
-      { path: "inventory", Component: InventoryManagement },
-      { path: "orders", Component: OrderManagement },
-      { path: "orders/:id", Component: OrderDetail },
-      { path: "warranty", Component: WarrantyManagement },
-      { path: "warranty/:id", Component: WarrantyDetail },
-      { path: "maintenance", Component: MaintenanceManagement },
-      { path: "reports", Component: Reports },
-      { path: "settings", Component: Settings },
+      {
+        path: "/",
+        Component: Layout,
+        children: [
+          { index: true, Component: ExecutiveDashboard },
+          { path: "leads", Component: LeadManagement },
+          { path: "leads/:id", Component: LeadDetail },
+          { path: "dealers", Component: DealerManagement },
+          { path: "dealers/:id", Component: DealerDetail },
+          { path: "products", Component: ProductCatalogue },
+          { path: "products/:id", Component: ProductDetail },
+          { path: "inventory", Component: InventoryManagement },
+          { path: "orders", Component: OrderManagement },
+          { path: "orders/:id", Component: OrderDetail },
+          { path: "warranty", Component: WarrantyManagement },
+          { path: "warranty/:id", Component: WarrantyDetail },
+          { path: "maintenance", Component: MaintenanceManagement },
+          { path: "reports", Component: Reports },
+          { path: "settings", Component: Settings },
+        ],
+      },
     ],
   },
 ]);

@@ -1,5 +1,7 @@
-import { Search, Bell, User, Settings, LogOut, ChevronDown } from "lucide-react";
+import { Search, Bell, User, LogOut, ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router";
+import { useAuth } from "../context/AuthContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +13,14 @@ import {
 import { Badge } from "./ui/badge";
 
 export function Header() {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
+
   const [notifications] = useState([
     {
       id: 1,
@@ -95,7 +105,7 @@ export function Header() {
                 <div className="text-sm font-medium text-gray-900">
                   Admin User
                 </div>
-                <div className="text-xs text-gray-500">Super Admin</div>
+                <div className="text-xs text-gray-500">Admin</div>
               </div>
               <ChevronDown className="w-4 h-4 text-gray-500" />
             </button>
@@ -107,12 +117,8 @@ export function Header() {
               <User className="w-4 h-4 mr-2" />
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Settings className="w-4 h-4 mr-2" />
-              Settings
-            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-600">
+            <DropdownMenuItem className="text-red-600" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" />
               Logout
             </DropdownMenuItem>
