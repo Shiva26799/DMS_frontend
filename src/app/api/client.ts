@@ -1,11 +1,18 @@
 import axios from "axios";
 
+const getBaseURL = () => {
+    if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+    // Default for Vercel unified deployment
+    return "/api";
+};
+
 export const apiClient = axios.create({
-    baseURL: import.meta.env.VITE_API_URL,
+    baseURL: getBaseURL(),
     headers: {
         "Content-Type": "application/json",
     },
 });
+
 
 apiClient.interceptors.request.use(
     (config) => {
