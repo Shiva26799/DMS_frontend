@@ -7,6 +7,8 @@ export const apiClient = axios.create({
     },
 });
 
+console.log("API Client initialized with baseURL:", apiClient.defaults.baseURL);
+
 apiClient.interceptors.request.use(
     (config) => {
         const token = localStorage.getItem("token");
