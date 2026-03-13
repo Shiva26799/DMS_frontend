@@ -1,7 +1,7 @@
 import { CompanyInfo } from "../models/CompanyInfo.js";
 import { User } from "../models/User.js";
 import { Warehouse } from "../models/Warehouse.js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 // COMPANY INFO
 export const getCompanyInfo = async (req, res) => {
