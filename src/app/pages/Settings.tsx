@@ -112,10 +112,10 @@ export function Settings() {
 
   useEffect(() => {
     Promise.all([
-      apiClient.get("/settings/company"),
-      apiClient.get("/settings/users"),
-      apiClient.get("/settings/warehouses"),
-      apiClient.get("/dealers")
+      apiClient.get("settings/company"),
+      apiClient.get("settings/users"),
+      apiClient.get("settings/warehouses"),
+      apiClient.get("dealers")
     ])
       .then(([companyRes, usersRes, warehousesRes, dealersRes]) => {
         if (companyRes.data) {
@@ -152,7 +152,7 @@ export function Settings() {
         const formData = new FormData();
         formData.append("logo", file);
 
-        const res = await apiClient.put("/settings/company/logo", formData, {
+        const res = await apiClient.put("settings/company/logo", formData, {
           headers: {
             "Content-Type": "multipart/form-data",
           },
@@ -173,7 +173,7 @@ export function Settings() {
       e.preventDefault();
     }
     try {
-      await apiClient.put("/settings/company", companyInfo);
+      await apiClient.put("settings/company", companyInfo);
       toast.success("Company information saved successfully");
     } catch (error) {
       toast.error("Failed to save company information");
@@ -213,7 +213,7 @@ export function Settings() {
         const payload = { ...userForm };
         if (!payload.dealerId) payload.dealerId = null as any; // Allow clearing dealerId
 
-        const res = await apiClient.put(`/settings/users/${editingUser._id}`, payload);
+        const res = await apiClient.put(`settings/users/${editingUser._id}`, payload);
         setUsers(users.map((u) => (u._id === editingUser._id ? res.data : u)));
         toast.success("User updated successfully");
       } else {
@@ -226,7 +226,7 @@ export function Settings() {
         const payload: any = { ...userForm };
         if (!payload.dealerId) delete payload.dealerId;
 
-        const res = await apiClient.post("/settings/users", payload);
+        const res = await apiClient.post("settings/users", payload);
         setUsers([...users, res.data]);
         toast.success("User added successfully");
       }
@@ -239,7 +239,7 @@ export function Settings() {
 
   const handleDeleteUser = async (userId: string) => {
     try {
-      await apiClient.delete(`/settings/users/${userId}`);
+      await apiClient.delete(`settings/users/${userId}`);
       setUsers(users.filter((u) => u._id !== userId));
       toast.success("User deleted successfully");
     } catch (error) {
@@ -283,12 +283,12 @@ export function Settings() {
     try {
       if (editingWarehouse) {
         // Update existing warehouse
-        const res = await apiClient.put(`/settings/warehouses/${editingWarehouse._id}`, warehouseForm);
+        const res = await apiClient.put(`settings/warehouses/${editingWarehouse._id}`, warehouseForm);
         setWarehouses(warehouses.map((w) => (w._id === editingWarehouse._id ? res.data : w)));
         toast.success("Warehouse updated successfully");
       } else {
         // Add new warehouse
-        const res = await apiClient.post("/settings/warehouses", warehouseForm);
+        const res = await apiClient.post("settings/warehouses", warehouseForm);
         setWarehouses([...warehouses, res.data]);
         toast.success("Warehouse added successfully");
       }
@@ -301,7 +301,7 @@ export function Settings() {
 
   const handleDeleteWarehouse = async (warehouseId: string) => {
     try {
-      await apiClient.delete(`/settings/warehouses/${warehouseId}`);
+      await apiClient.delete(`settings/warehouses/${warehouseId}`);
       setWarehouses(warehouses.filter((w) => w._id !== warehouseId));
       toast.success("Warehouse deleted successfully");
     } catch (error) {

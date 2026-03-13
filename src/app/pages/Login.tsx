@@ -21,7 +21,7 @@ export function Login() {
         setIsLoading(true);
 
         try {
-            const response = await apiClient.post("/auth/login", { email, password });
+            const response = await apiClient.post("auth/login", { email, password });
             const { token, user } = response.data;
 
             login(token, user);
@@ -40,7 +40,7 @@ export function Login() {
                 <div className="text-center mb-8">
                     <div className="w-64 h-24 bg-transparent rounded-lg mx-auto flex items-center justify-center mb-1 overflow-hidden">
                         <img
-                            src="http://localhost:5000/public/logo.png"
+                            src="/logo.png"
                             alt="Logo"
                             className="w-full h-full object-contain"
                             onError={(e) => {

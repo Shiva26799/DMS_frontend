@@ -96,8 +96,8 @@ export function ProductCatalogue() {
     if (showLoading) setLoading(true);
     try {
       const [productsRes, warehousesRes] = await Promise.all([
-        apiClient.get('/products'),
-        apiClient.get('/warehouses')
+        apiClient.get('products'),
+        apiClient.get('warehouses')
       ]);
       setProducts(productsRes.data);
       setWarehouses(warehousesRes.data);
@@ -183,7 +183,7 @@ export function ProductCatalogue() {
         submitData.append("image", imageFile);
       }
 
-      const res = await apiClient.post('/products', submitData, {
+      const res = await apiClient.post('products', submitData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
@@ -321,7 +321,7 @@ export function ProductCatalogue() {
         }
 
         try {
-          const res = await apiClient.post('/products/bulk', importedProducts);
+          const res = await apiClient.post('products/bulk', importedProducts);
           const { added, skipped } = res.data;
 
           toast.success(

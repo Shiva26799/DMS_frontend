@@ -83,7 +83,7 @@ export function LeadDetail() {
 
   const fetchLead = async () => {
     try {
-      const res = await apiClient.get(`/leads/${id}`);
+      const res = await apiClient.get(`leads/${id}`);
       setLead(res.data);
     } catch (error) {
       toast.error("Failed to load lead details");
@@ -96,7 +96,7 @@ export function LeadDetail() {
     if (!newStatus) return;
     setActionLoading(true);
     try {
-      const res = await apiClient.put(`/leads/${id}/status`, { status: newStatus });
+      const res = await apiClient.put(`leads/${id}/status`, { status: newStatus });
       setLead(res.data);
       toast.success(`Status updated to ${newStatus}`);
       setIsStatusDialogOpen(false);
@@ -111,7 +111,7 @@ export function LeadDetail() {
     if (!selectedDealerId) return;
     setActionLoading(true);
     try {
-      const res = await apiClient.put(`/leads/${id}/assign`, {
+      const res = await apiClient.put(`leads/${id}/assign`, {
         dealerId: selectedDealerId,
         dealerName: selectedDealerName,
       });
@@ -128,7 +128,7 @@ export function LeadDetail() {
   const handleConvertToCustomer = async () => {
     setActionLoading(true);
     try {
-      await apiClient.post(`/leads/${id}/convert`);
+      await apiClient.post(`leads/${id}/convert`);
       toast.success("Lead successfully converted to customer!");
       setIsConvertDialogOpen(false);
       navigate("/leads");
@@ -146,7 +146,7 @@ export function LeadDetail() {
     }
     setActionLoading(true);
     try {
-      const res = await apiClient.post(`/leads/${id}/follow-up`, {
+      const res = await apiClient.post(`leads/${id}/follow-up`, {
         date: followUpDate,
         note: followUpNote,
       });
@@ -165,7 +165,7 @@ export function LeadDetail() {
   const handleAddNote = async () => {
     if (!note.trim()) return;
     try {
-      const res = await apiClient.put(`/leads/${id}`, { notes: note });
+      const res = await apiClient.put(`leads/${id}`, { notes: note });
       setLead((prev) => prev ? { ...prev, notes: note } : prev);
       toast.success("Note saved");
       setNote("");
@@ -178,7 +178,7 @@ export function LeadDetail() {
     setIsAssignDialogOpen(true);
     if (dealers.length === 0) {
       try {
-        const res = await apiClient.get("/dealers");
+        const res = await apiClient.get("dealers");
         setDealers(res.data);
       } catch {
         toast.error("Failed to load dealer list");

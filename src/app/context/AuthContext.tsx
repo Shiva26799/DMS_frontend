@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         if (token) {
-            apiClient.get("/auth/me")
+            apiClient.get("auth/me")
                 .then((res) => {
                     setUser(res.data);
                 })

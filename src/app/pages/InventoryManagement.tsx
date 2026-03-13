@@ -226,8 +226,8 @@ export function InventoryManagement() {
     if (isFirstLoad) setLoading(true);
     try {
       const [productsRes, warehousesRes] = await Promise.all([
-        apiClient.get("/products"),
-        apiClient.get("/warehouses")
+        apiClient.get("products"),
+        apiClient.get("warehouses")
       ]);
       setInventory(productsRes.data);
       setWarehouses(warehousesRes.data);

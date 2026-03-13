@@ -68,7 +68,7 @@ export function LeadManagement() {
 
   const fetchLeads = async () => {
     try {
-      const res = await apiClient.get("/leads");
+      const res = await apiClient.get("leads");
       setLeads(res.data);
     } catch (error) {
       toast.error("Failed to fetch leads");
@@ -80,7 +80,7 @@ export function LeadManagement() {
   const handleCreateLead = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await apiClient.post("/leads", {
+      const res = await apiClient.post("leads", {
         ...leadForm,
         status: "New",
         assignedDate: new Date().toISOString().split("T")[0],
