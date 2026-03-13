@@ -39,7 +39,7 @@ app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use("/public", express.static(path.join(__dirname, "../public")));
 
 // Database connection helper
-let cachedDb: any = null;
+let cachedDb = null;
 const connectToDatabase = async () => {
     if (cachedDb) return cachedDb;
     
@@ -64,13 +64,14 @@ app.use(async (req, res, next) => {
     try {
         await connectToDatabase();
         next();
-    } catch (err: any) {
+    } catch (err) {
         res.status(503).json({ 
             message: "Database connection failed", 
             error: process.env.NODE_ENV === "development" ? err.message : "Service Unavailable" 
         });
     }
 });
+
 
 
 // Diagnostic health check
@@ -98,13 +99,14 @@ mountRoutes("/api");
 mountRoutes(""); // Fallback for direct function calls if Vercel rewrites strip /api
 
 // Global Error Handler
-app.use((err: any, req: any, res: any, next: any) => {
+app.use((err, req, res, next) => {
     console.error("🔥 Global Error:", err);
     res.status(500).json({
         message: "Internal Server Error",
         error: process.env.NODE_ENV === "development" ? err.message : "Something went wrong"
     });
 });
+
 
 export default app;
 
