@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { Plus, Filter, Search } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -13,25 +13,89 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Input } from "../components/ui/input";
+import { Skeleton } from "../components/ui/skeleton";
+import { useDebounce } from "../hooks/useDebounce";
+import { useDealers } from "../context/DealerContext";
+import { useWarranty } from "../context/WarrantyContext";
+import { mockProducts } from "../data/mockData";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "../components/ui/dialog";
+import { Label } from "../components/ui/label";
 
 export function WarrantyManagement() {
+  const { dealers } = useDealers();
+  const { claims, addClaim } = useWarranty();
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
-  const filteredClaims = mockWarrantyClaims.filter((claim) => {
+  // Form state for new claim
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    dealerId: "",
+    productId: "",
+    productSerial: "",
+    issueDescription: "",
+    purchaseDate: new Date().toISOString().split("T")[0],
+  });
+
+  const handleCreateClaim = () => {
+    const selectedDealer = dealers.find((d) => d._id === formData.dealerId);
+    const selectedProduct = mockProducts.find((p) => p.id === formData.productId);
+
+    if (!selectedDealer || !selectedProduct) return;
+
+    const newClaim: any = {
+      id: `WC${Date.now()}`,
+      claimNumber: `WC-2026-${(claims.length + 1).toString().padStart(3, "0")}`,
+      productSerial: formData.productSerial,
+      productName: selectedProduct.name,
+      dealer: selectedDealer.companyName,
+      purchaseDate: formData.purchaseDate,
+      issueDescription: formData.issueDescription,
+      status: "Submitted" as const,
+      submittedDate: new Date().toISOString().split("T")[0],
+      warrantyValid: true,
+    };
+
+    addClaim(newClaim);
+    setFormData({
+      dealerId: "",
+      productId: "",
+      productSerial: "",
+      issueDescription: "",
+      purchaseDate: new Date().toISOString().split("T")[0],
+    });
+    setIsDialogOpen(false);
+  };
+
+  const filteredClaims = claims.filter((claim) => {
     const matchesStatus = filterStatus === "all" || claim.status.toLowerCase().replace(/ /g, "-") === filterStatus;
     const matchesSearch =
-      claim.claimNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      claim.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      claim.dealer.toLowerCase().includes(searchQuery.toLowerCase());
+      claim.claimNumber.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      claim.productName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      claim.dealer.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
     return matchesStatus && matchesSearch;
   });
 
-  const totalClaims = mockWarrantyClaims.length;
-  const openClaims = mockWarrantyClaims.filter(
+  const totalClaims = claims.length;
+  const openClaims = claims.filter(
     (c) => c.status !== "Closed" && c.status !== "Rejected"
   ).length;
-  const approvedClaims = mockWarrantyClaims.filter((c) => c.status === "Approved" || c.status === "Dispatch").length;
+  const approvedClaims = claims.filter((c) => c.status === "Approved" || c.status === "Dispatch").length;
 
   return (
     <div className="p-6 space-y-6">
@@ -45,35 +109,141 @@ export function WarrantyManagement() {
             Track and manage warranty claims
           </p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700">
-          <Plus className="w-4 h-4 mr-2" />
-          New Claim
-        </Button>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="w-4 h-4 mr-2" />
+              New Claim
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>File New Warranty Claim</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
+              <div className="grid gap-2">
+                <Label htmlFor="dealer">Select Dealer</Label>
+                <Select
+                  value={formData.dealerId}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, dealerId: value })
+                  }
+                >
+                  <SelectTrigger id="dealer">
+                    <SelectValue placeholder="Choose a dealer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dealers.map((d) => (
+                      <SelectItem key={d._id} value={d._id}>
+                        {d.companyName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="product">Select Product</Label>
+                <Select
+                  value={formData.productId}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, productId: value })
+                  }
+                >
+                  <SelectTrigger id="product">
+                    <SelectValue placeholder="Choose a product" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mockProducts.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="productSerial">Serial Number</Label>
+                <Input
+                  id="productSerial"
+                  placeholder="e.g. HP2000-2025-1234"
+                  value={formData.productSerial}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+                    setFormData({ ...formData, productSerial: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="purchaseDate">Purchase Date</Label>
+                <Input
+                  id="purchaseDate"
+                  type="date"
+                  value={formData.purchaseDate}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+                    setFormData({ ...formData, purchaseDate: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="issueDescription">Issue Description</Label>
+                <textarea
+                  id="issueDescription"
+                  className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Describe the problem in detail..."
+                  value={formData.issueDescription}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+                    setFormData({ ...formData, issueDescription: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={handleCreateClaim}
+              >
+                Submit Claim
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <p className="text-sm text-gray-600">Total Claims</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{totalClaims}</p>
+          {isLoading ? <Skeleton className="h-8 w-16 mt-1" /> : <p className="text-2xl font-bold text-gray-900 mt-1">{totalClaims}</p>}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Open Claims</p>
-          <p className="text-2xl font-bold text-orange-600 mt-1">
-            {openClaims}
-          </p>
+          {isLoading ? (
+            <Skeleton className="h-8 w-16 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-orange-600 mt-1">
+              {openClaims}
+            </p>
+          )}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Approved</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">
-            {approvedClaims}
-          </p>
+          {isLoading ? (
+            <Skeleton className="h-8 w-16 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-green-600 mt-1">
+              {approvedClaims}
+            </p>
+          )}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Resolution Rate</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">
-            {((approvedClaims / totalClaims) * 100).toFixed(0)}%
-          </p>
+          {isLoading ? (
+            <Skeleton className="h-8 w-16 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-gray-900 mt-1">
+              {((approvedClaims / totalClaims) * 100).toFixed(0)}%
+            </p>
+          )}
         </Card>
       </div>
 
@@ -146,7 +316,22 @@ export function WarrantyManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredClaims.map((claim) => (
+              {isLoading ? (
+                Array(5).fill(0).map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-10 w-48" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-5 w-16 rounded" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-8 w-24" /></td>
+                  </tr>
+                ))
+              ) : (
+                filteredClaims.map((claim) => (
                 <tr key={claim.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <span className="text-sm font-medium text-blue-600">
@@ -192,7 +377,7 @@ export function WarrantyManagement() {
                     </Link>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

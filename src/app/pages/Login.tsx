@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../context/AuthContext";
-import { apiClient } from "../api/client";
+import { useLoginMutation } from "../hooks/auth/useLoginMutation";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -12,27 +12,30 @@ import { Loader2 } from "lucide-react";
 export function Login() {
     const [email, setEmail] = useState("admin@lovol.com");
     const [password, setPassword] = useState("admin");
-    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
     const { login } = useAuth();
+    const loginMutation = useLoginMutation();
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        setIsLoading(true);
 
-        try {
-            const response = await apiClient.post("auth/login", { email, password });
-            const { token, user } = response.data;
-
-            login(token, user);
-            toast.success("Successfully logged in");
-            navigate("/");
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || "Login failed");
-        } finally {
-            setIsLoading(false);
-        }
+        loginMutation.mutate({ email, password }, {
+            onSuccess: (data) => {
+                const { token, user } = data;
+                login(token, user);
+                toast.success("Successfully logged in");
+                navigate("/");
+            },
+            onError: (err: any) => {
+                const message = err.response?.data?.message || "Login failed";
+                setError(message);
+                toast.error(message);
+            }
+        });
     };
+
+    const isLoading = loginMutation.isPending;
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -63,7 +66,10 @@ export function Login() {
                             type="email"
                             required
                             value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            onChange={(e) => {
+                                setEmail(e.target.value);
+                                setError(null);
+                            }}
                             className="mt-1"
                             placeholder="admin@lovol.com"
                         />
@@ -76,11 +82,20 @@ export function Login() {
                             type="password"
                             required
                             value={password}
-                            onChange={(e) => setPassword(e.target.value)}
+                            onChange={(e) => {
+                                setPassword(e.target.value);
+                                setError(null);
+                            }}
                             className="mt-1"
                             placeholder="••••••••"
                         />
                     </div>
+
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-md text-sm">
+                            {error}
+                        </div>
+                    )}
 
                     <Button
                         type="submit"

@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { Plus, Filter, Search, Package, Loader2, Image as ImageIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
+import { Skeleton } from "../components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -23,8 +24,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
-import { apiClient } from "../api/client";
 import { toast } from "sonner";
+import { useProducts, useWarehouses, useAddProduct, useBulkAddProducts } from "../hooks/useProducts";
 
 interface Product {
   _id: string;
@@ -44,12 +45,15 @@ interface Product {
 }
 
 export function ProductCatalogue() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: products = [], isLoading: isProductsLoading } = useProducts();
+  const { data: warehouses = [], isLoading: isWarehousesLoading } = useWarehouses();
+  
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(12);
+
+  const loading = isProductsLoading || isWarehousesLoading;
 
   useEffect(() => {
     setCurrentPage(1);
@@ -58,7 +62,6 @@ export function ProductCatalogue() {
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -74,11 +77,17 @@ export function ProductCatalogue() {
     warrantyPeriod: "",
     warehouseId: "",
   });
-  const [warehouses, setWarehouses] = useState<any[]>([]);
   const [bulkWarehouseId, setBulkWarehouseId] = useState<string>("");
   const [specs, setSpecs] = useState<{ key: string; value: string }[]>([{ key: "", value: "" }]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (warehouses.length > 0 && !formData.warehouseId) {
+      setFormData(prev => ({ ...prev, warehouseId: warehouses[0]._id }));
+      setBulkWarehouseId(warehouses[0]._id);
+    }
+  }, [warehouses]);
 
   const addSpecRow = () => setSpecs([...specs, { key: "", value: "" }]);
   const removeSpecRow = (i: number) => setSpecs(specs.filter((_, idx) => idx !== i));
@@ -88,32 +97,8 @@ export function ProductCatalogue() {
     setSpecs(updated);
   };
 
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
-
-  const fetchInitialData = async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    try {
-      const [productsRes, warehousesRes] = await Promise.all([
-        apiClient.get('products'),
-        apiClient.get('warehouses')
-      ]);
-      setProducts(productsRes.data);
-      setWarehouses(warehousesRes.data);
-      if (warehousesRes.data.length > 0) {
-        setFormData(prev => ({ ...prev, warehouseId: warehousesRes.data[0]._id }));
-        setBulkWarehouseId(warehousesRes.data[0]._id);
-      }
-    } catch (error) {
-      toast.error('Failed to load data');
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  };
-
   const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
+    return products.filter((product: Product) => {
       const matchesCategory = filterCategory === "all" || product.category === filterCategory;
       const matchesSearch =
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -130,6 +115,9 @@ export function ProductCatalogue() {
     return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredProducts, currentPage, itemsPerPage]);
 
+  const addMutation = useAddProduct();
+  const bulkMutation = useBulkAddProducts();
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -144,84 +132,45 @@ export function ProductCatalogue() {
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.category) {
-      toast.error("Name and Category are required");
-      return;
+    if (addMutation.isPending) return;
+
+    const submitData = new FormData();
+    submitData.append("name", formData.name);
+    if (formData.sku) submitData.append("sku", formData.sku);
+    if (formData.partNumber) submitData.append("partNumber", formData.partNumber);
+    submitData.append("category", formData.category);
+    submitData.append("description", formData.description);
+    submitData.append("price", formData.price || "0");
+    submitData.append("stockAvailable", formData.stockAvailable || "0");
+    submitData.append("warrantyPeriod", formData.warrantyPeriod);
+    if (formData.warehouseId) submitData.append("warehouseId", formData.warehouseId);
+
+    const specsObj: Record<string, string> = {};
+    specs.forEach(({ key, value }) => {
+      if (key.trim()) specsObj[key.trim()] = value.trim();
+    });
+    submitData.append("specifications", JSON.stringify(specsObj));
+
+    if (imageFile) {
+      submitData.append("image", imageFile);
     }
 
-    if (formData.category === "Harvester" && !formData.sku) {
-      toast.error("SKU is required for Harvesters");
-      return;
-    }
-
-    if (formData.category === "Spare Part" && !formData.partNumber) {
-      toast.error("Part Number is required for Spare Parts");
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      const submitData = new FormData();
-      submitData.append("name", formData.name);
-      if (formData.sku) submitData.append("sku", formData.sku);
-      if (formData.partNumber) submitData.append("partNumber", formData.partNumber);
-      submitData.append("category", formData.category);
-      submitData.append("description", formData.description);
-      submitData.append("price", formData.price || "0");
-      submitData.append("stockAvailable", formData.stockAvailable || "0");
-      submitData.append("warrantyPeriod", formData.warrantyPeriod);
-      if (formData.warehouseId) submitData.append("warehouseId", formData.warehouseId);
-
-      // Build specifications object from state rows
-      const specsObj: Record<string, string> = {};
-      specs.forEach(({ key, value }) => {
-        if (key.trim()) specsObj[key.trim()] = value.trim();
-      });
-      submitData.append("specifications", JSON.stringify(specsObj));
-
-      if (imageFile) {
-        submitData.append("image", imageFile);
+    addMutation.mutate(submitData, {
+      onSuccess: () => {
+        setIsAddModalOpen(false);
+        setFormData({ name: "", sku: "", partNumber: "", category: "", description: "", price: "", stockAvailable: "", warrantyPeriod: "", warehouseId: warehouses[0]?._id || "" });
+        setSpecs([{ key: "", value: "" }]);
+        setImageFile(null);
+        setImagePreview(null);
       }
-
-      const res = await apiClient.post('products', submitData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      toast.success("Product added successfully");
-      setIsAddModalOpen(false);
-      
-      // Update local state instead of wiping the list
-      setProducts((prev) => [
-        {
-          ...res.data,
-          warehouseId: warehouses.find((w) => w._id === res.data.warehouseId) || res.data.warehouseId,
-        },
-        ...prev,
-      ]);
-
-      // Reset form
-      setFormData({ name: "", sku: "", partNumber: "", category: "", description: "", price: "", stockAvailable: "", warrantyPeriod: "", warehouseId: warehouses[0]?._id || "" });
-      setSpecs([{ key: "", value: "" }]);
-      setImageFile(null);
-      setImagePreview(null);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to add product");
-    } finally {
-      setActionLoading(false);
-    }
+    });
   };
 
   const handleBulkImport = async () => {
     if (!selectedFile) {
-      toast.error("Please select an Excel file first");
+      toast.error("Please select a file first");
       return;
     }
-    if (!bulkWarehouseId) {
-      toast.error("Please select a warehouse for import");
-      return;
-    }
-
-    setActionLoading(true);
     try {
       const reader = new FileReader();
 
@@ -236,7 +185,6 @@ export function ProductCatalogue() {
 
         if (jsonData.length < 1) {
           toast.error("The Excel file seems to be empty");
-          setActionLoading(false);
           return;
         }
 
@@ -269,7 +217,7 @@ export function ProductCatalogue() {
           let parts = row.map(cell => String(cell || "").trim());
 
           // Skip header/title rows
-          const isHeaderOrTitle = parts.some(p => {
+          const isHeaderOrTitle = parts.some((p: string) => {
             const lp = p.toLowerCase();
             return lp.includes("lovol products") || lp === "part no" || lp === "product type" || lp === "s.no" || lp === "sn" || lp === "item description" || lp === "updated counting status" || lp === "product name" || lp === "brief specification";
           });
@@ -316,36 +264,31 @@ export function ProductCatalogue() {
 
         if (importedProducts.length === 0) {
           toast.error("Could not parse any valid products. Please ensure the Excel has the correct columns.");
-          setActionLoading(false);
+          setIsBulkModalOpen(false); // Close modal if no products parsed
+          setSelectedFile(null);
           return;
         }
-
         try {
-          const res = await apiClient.post('products/bulk', importedProducts);
-          const { added, skipped } = res.data;
-
-          toast.success(
-            `Import Successful: ${added} added. ` +
-            (skipped > 0 ? `${skipped} duplicates skipped. ` : "") +
-            (rowSkipCount > 0 ? `${rowSkipCount} headers/empty rows ignored.` : "")
-          );
-
-          setIsBulkModalOpen(false);
-          setSelectedFile(null);
-          fetchInitialData(false);
+          bulkMutation.mutate(importedProducts, {
+            onSuccess: () => {
+              setIsBulkModalOpen(false);
+              setSelectedFile(null);
+            }
+          });
         } catch (err: any) {
-          toast.error(err?.response?.data?.message || "Failed to bulk import products");
-        } finally {
-          setActionLoading(false);
+          toast.error("Error submitting bulk import");
         }
       };
 
-      reader.readAsArrayBuffer(selectedFile);
-    } catch (err: any) {
-      toast.error("Error reading file");
-      setActionLoading(false);
-    }
-  };
+        if (selectedFile) {
+          reader.readAsArrayBuffer(selectedFile);
+        }
+      } catch (err: any) {
+        toast.error("Error reading file");
+      }
+    };
+
+  const actionLoading = addMutation.isPending || bulkMutation.isPending;
 
   return (
     <div className="p-6 space-y-6">
@@ -387,13 +330,13 @@ export function ProductCatalogue() {
         <Card className="p-4">
           <p className="text-sm text-gray-600">Harvesters</p>
           <p className="text-2xl font-bold text-blue-600 mt-1">
-            {products.filter((p) => p.category === "Harvester").length}
+            {products.filter((p: any) => p.category === "Harvester").length}
           </p>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Spare Parts</p>
           <p className="text-2xl font-bold text-green-600 mt-1">
-            {products.filter((p) => p.category === "Spare Part").length}
+            {products.filter((p: any) => p.category === "Spare Part").length}
           </p>
         </Card>
       </div>
@@ -428,8 +371,20 @@ export function ProductCatalogue() {
 
       {/* Products Grid */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {[...Array(8)].map((_, i) => (
+            <Card key={i} className="overflow-hidden border border-gray-100">
+              <Skeleton className="h-48 w-full" />
+              <div className="p-4 space-y-3">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+                <div className="flex justify-between items-center pt-2">
+                  <Skeleton className="h-6 w-20" />
+                  <Skeleton className="h-8 w-24" />
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
       ) : filteredProducts.length === 0 ? (
         <div className="text-center py-20">
@@ -541,7 +496,7 @@ export function ProductCatalogue() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              onClick={() => setCurrentPage((p: number) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
             >
               <ChevronLeft className="w-4 h-4 mr-1" />
@@ -553,7 +508,7 @@ export function ProductCatalogue() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              onClick={() => setCurrentPage((p: number) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
             >
               Next
@@ -643,7 +598,7 @@ export function ProductCatalogue() {
                       <SelectValue placeholder="Select Warehouse" />
                     </SelectTrigger>
                     <SelectContent>
-                      {warehouses.map(w => (
+                      {warehouses.map((w: any) => (
                         <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -740,7 +695,7 @@ export function ProductCatalogue() {
                   <SelectValue placeholder="Select Warehouse" />
                 </SelectTrigger>
                 <SelectContent>
-                  {warehouses.map(w => (
+                  {warehouses.map((w: any) => (
                     <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
                   ))}
                 </SelectContent>

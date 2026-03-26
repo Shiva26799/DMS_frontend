@@ -1,4 +1,5 @@
 import { useParams, Link } from "react-router";
+import { useState, useEffect, useMemo } from "react";
 import { ArrowLeft, FileText, Upload, CheckCircle, Clock } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -6,11 +7,31 @@ import { StatusBadge } from "../components/StatusBadge";
 import { mockOrders, mockDealers } from "../data/mockData";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Progress } from "../components/ui/progress";
+import { useOrders } from "../context/OrderContext";
+import { useDealers } from "../context/DealerContext";
+
+import { Skeleton } from "../components/ui/skeleton";
 
 export function OrderDetail() {
   const { id } = useParams();
-  const order = mockOrders.find((o) => o.id === id);
-  const dealer = order ? mockDealers.find((d) => d.id === order.dealerId) : null;
+  const { orders } = useOrders();
+  const { getDealer } = useDealers();
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const order = useMemo(() => {
+    return (orders as any[]).find((o) => o.id === id || o._id === id) || (mockOrders as any[]).find((o) => o.id === id || o._id === id);
+  }, [orders, id]);
+
+  const dealer = useMemo(() => {
+    if (!order) return null;
+    const dId = order.dealerId;
+    return (getDealer(dId) as any) || (mockDealers as any[]).find((d) => d._id === dId);
+  }, [order, getDealer]);
 
   if (!order || !dealer) {
     return (
@@ -55,12 +76,20 @@ export function OrderDetail() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {order.orderNumber}
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Order Date: {order.orderDate}
-            </p>
+            {isLoading ? (
+              <Skeleton className="h-8 w-48 mb-1" />
+            ) : (
+              <h1 className="text-2xl font-bold text-gray-900">
+                {order.orderNumber}
+              </h1>
+            )}
+            {isLoading ? (
+              <Skeleton className="h-4 w-32" />
+            ) : (
+              <p className="text-sm text-gray-600 mt-1">
+                Order Date: {order.orderDate}
+              </p>
+            )}
           </div>
         </div>
         <StatusBadge status={order.paymentStatus} />
@@ -68,28 +97,25 @@ export function OrderDetail() {
 
       {/* Order Summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="p-4">
-          <p className="text-sm text-gray-600">Dealer</p>
-          <p className="text-lg font-semibold text-gray-900 mt-1">{order.dealer}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-sm text-gray-600">Order Value</p>
-          <p className="text-lg font-semibold text-gray-900 mt-1">
-            ₹{(order.totalValue / 100000).toFixed(1)}L
-          </p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-sm text-gray-600">Payment Status</p>
-          <div className="mt-1">
-            <StatusBadge status={order.paymentStatus} />
-          </div>
-        </Card>
-        <Card className="p-4">
-          <p className="text-sm text-gray-600">Delivery Status</p>
-          <p className="text-lg font-semibold text-gray-900 mt-1">
-            {order.deliveryStatus}
-          </p>
-        </Card>
+        {[
+          { label: "Dealer", value: order.dealer },
+          { label: "Order Value", value: `₹${(order.totalValue / 100000).toFixed(1)}L` },
+          { label: "Payment Status", value: order.paymentStatus, isBadge: true },
+          { label: "Delivery Status", value: order.deliveryStatus }
+        ].map((card, i) => (
+          <Card key={i} className="p-4">
+            <p className="text-sm text-gray-600">{card.label}</p>
+            {isLoading ? (
+              <Skeleton className="h-7 w-24 mt-1" />
+            ) : card.isBadge ? (
+              <div className="mt-1">
+                <StatusBadge status={card.value} />
+              </div>
+            ) : (
+              <p className="text-lg font-semibold text-gray-900 mt-1">{card.value}</p>
+            )}
+          </Card>
+        ))}
       </div>
 
       {/* Progress Tracker */}
@@ -98,46 +124,64 @@ export function OrderDetail() {
           Order Progress
         </h3>
         <div className="mb-4">
-          <Progress value={order.stageProgress} className="h-3" />
-          <p className="text-sm text-gray-600 mt-2">
-            {order.stageProgress}% Complete - Current Stage: {order.currentStage}
-          </p>
+          {isLoading ? (
+            <>
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-4 w-64 mt-2" />
+            </>
+          ) : (
+            <>
+              <Progress value={order.stageProgress} className="h-3" />
+              <p className="text-sm text-gray-600 mt-2">
+                {order.stageProgress}% Complete - Current Stage: {order.currentStage}
+              </p>
+            </>
+          )}
         </div>
         <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-4 mt-6">
-          {orderStages.map((stage, index) => (
-            <div key={index} className="text-center">
-              <div
-                className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-2 ${
-                  stage.status === "completed"
-                    ? "bg-green-100"
-                    : stage.status === "current"
-                    ? "bg-blue-100"
-                    : "bg-gray-100"
-                }`}
-              >
-                {stage.status === "completed" ? (
-                  <CheckCircle className="w-6 h-6 text-green-600" />
-                ) : stage.status === "current" ? (
-                  <Clock className="w-6 h-6 text-blue-600" />
-                ) : (
-                  <span className="text-sm font-medium text-gray-400">
-                    {index + 1}
-                  </span>
-                )}
+          {isLoading ? (
+            Array(9).fill(0).map((_, i) => (
+              <div key={i} className="text-center">
+                <Skeleton className="w-12 h-12 rounded-full mx-auto mb-2" />
+                <Skeleton className="h-3 w-16 mx-auto" />
               </div>
-              <p
-                className={`text-xs ${
-                  stage.status === "completed"
-                    ? "text-green-600 font-medium"
-                    : stage.status === "current"
-                    ? "text-blue-600 font-medium"
-                    : "text-gray-500"
-                }`}
-              >
-                {stage.name}
-              </p>
-            </div>
-          ))}
+            ))
+          ) : (
+            orderStages.map((stage, index) => (
+              <div key={index} className="text-center">
+                <div
+                  className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-2 ${
+                    stage.status === "completed"
+                      ? "bg-green-100"
+                      : stage.status === "current"
+                      ? "bg-blue-100"
+                      : "bg-gray-100"
+                  }`}
+                >
+                  {stage.status === "completed" ? (
+                    <CheckCircle className="w-6 h-6 text-green-600" />
+                  ) : stage.status === "current" ? (
+                    <Clock className="w-6 h-6 text-blue-600" />
+                  ) : (
+                    <span className="text-sm font-medium text-gray-400">
+                      {index + 1}
+                    </span>
+                  )}
+                </div>
+                <p
+                  className={`text-xs ${
+                    stage.status === "completed"
+                      ? "text-green-600 font-medium"
+                      : stage.status === "current"
+                      ? "text-blue-600 font-medium"
+                      : "text-gray-500"
+                  }`}
+                >
+                  {stage.name}
+                </p>
+              </div>
+            ))
+          )}
         </div>
       </Card>
 
@@ -193,7 +237,7 @@ export function OrderDetail() {
                 <div className="space-y-3">
                   <div>
                     <p className="text-sm text-gray-600">Dealer Name</p>
-                    <p className="text-sm font-medium text-gray-900">{dealer.name}</p>
+                    <p className="text-sm font-medium text-gray-900">{dealer.companyName}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Dealer Code</p>
@@ -202,12 +246,12 @@ export function OrderDetail() {
                   <div>
                     <p className="text-sm text-gray-600">Location</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {dealer.city}, {dealer.region}
+                      {dealer.city}, {dealer.region || "N/A"}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Contact</p>
-                    <p className="text-sm font-medium text-gray-900">{dealer.phone}</p>
+                    <p className="text-sm font-medium text-gray-900">{dealer.contact || dealer.phone || "N/A"}</p>
                   </div>
                 </div>
               </Card>

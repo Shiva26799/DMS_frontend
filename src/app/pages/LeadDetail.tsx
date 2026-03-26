@@ -1,21 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router";
-import { ArrowLeft, Phone, Mail, MapPin, Calendar, IndianRupee, Loader2, CheckCircle2, Clock, UserCheck } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Calendar, IndianRupee, Loader2, CheckCircle2, Clock, UserCheck, Plus, RefreshCw, User, Trash2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
+import { Skeleton } from "../components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -23,10 +26,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { apiClient } from "../api/client";
 import { toast } from "sonner";
 import { Lead } from "./LeadManagement";
 import { formatCurrency } from "../utils/currency";
+import {
+  useLeadDetail,
+  useUpdateLeadStatus,
+  useAssignLeadDealer,
+  useAddLeadFollowUp,
+  useUpdateLead,
+  useMarkFollowUpCompleted,
+  useCreateOrder,
+  useDeleteLead
+} from "../hooks/useLeads";
+import { useDealers } from "../hooks/useDealers";
 
 interface ActivityLog {
   _id?: string;
@@ -58,138 +71,194 @@ interface Dealer {
 export function LeadDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [lead, setLead] = useState<ExtendedLead | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  // Action dialogs
-  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
-  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
-  const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false);
-  const [isFollowUpDialogOpen, setIsFollowUpDialogOpen] = useState(false);
+  const { data: lead, isLoading: isLeadLoading } = useLeadDetail(id);
+  const { data: dealers = [] } = useDealers();
+
+  const updateStatusMutation = useUpdateLeadStatus();
+  const assignDealerMutation = useAssignLeadDealer();
+  const addFollowUpMutation = useAddLeadFollowUp();
+  const markFollowUpMutation = useMarkFollowUpCompleted();
+  const createOrderMutation = useCreateOrder();
+  const updateLeadMutation = useUpdateLead();
+  const deleteLeadMutation = useDeleteLead();
+
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+
+  // Action state
+  const [activeAction, setActiveAction] = useState<"status" | "assign" | "followup" | null>(null);
 
   // Form states
   const [newStatus, setNewStatus] = useState("");
-  const [dealers, setDealers] = useState<Dealer[]>([]);
   const [selectedDealerId, setSelectedDealerId] = useState("");
   const [selectedDealerName, setSelectedDealerName] = useState("");
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpNote, setFollowUpNote] = useState("");
+  const [lossReason, setLossReason] = useState("");
+  const [lossNotes, setLossNotes] = useState("");
   const [note, setNote] = useState("");
-  const [actionLoading, setActionLoading] = useState(false);
-
-  useEffect(() => {
-    fetchLead();
-  }, [id]);
-
-  const fetchLead = async () => {
-    try {
-      const res = await apiClient.get(`leads/${id}`);
-      setLead(res.data);
-    } catch (error) {
-      toast.error("Failed to load lead details");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [isStatusSelectOpen, setIsStatusSelectOpen] = useState(false);
 
   const handleChangeStatus = async () => {
-    if (!newStatus) return;
-    setActionLoading(true);
-    try {
-      const res = await apiClient.put(`leads/${id}/status`, { status: newStatus });
-      setLead(res.data);
-      toast.success(`Status updated to ${newStatus}`);
-      setIsStatusDialogOpen(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to update status");
-    } finally {
-      setActionLoading(false);
-    }
+    if (!newStatus || !id) return;
+    updateStatusMutation.mutate({ id, status: newStatus, lossReason, lossNotes }, {
+      onSuccess: () => {
+        setActiveAction(null);
+        setLossReason("");
+        setLossNotes("");
+      }
+    });
   };
 
   const handleAssignDealer = async () => {
-    if (!selectedDealerId) return;
-    setActionLoading(true);
-    try {
-      const res = await apiClient.put(`leads/${id}/assign`, {
-        dealerId: selectedDealerId,
-        dealerName: selectedDealerName,
-      });
-      setLead(res.data);
-      toast.success("Lead assigned to dealer successfully");
-      setIsAssignDialogOpen(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to assign dealer");
-    } finally {
-      setActionLoading(false);
-    }
+    if (!selectedDealerId || !id) return;
+    assignDealerMutation.mutate({
+      id,
+      dealerId: selectedDealerId,
+      dealerName: selectedDealerName
+    }, {
+      onSuccess: () => setActiveAction(null)
+    });
   };
 
-  const handleConvertToCustomer = async () => {
-    setActionLoading(true);
-    try {
-      await apiClient.post(`leads/${id}/convert`);
-      toast.success("Lead successfully converted to customer!");
-      setIsConvertDialogOpen(false);
-      navigate("/leads");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to convert lead");
-    } finally {
-      setActionLoading(false);
-    }
-  };
 
   const handleScheduleFollowUp = async () => {
-    if (!followUpDate || !followUpNote) {
+    if (!followUpDate || !followUpNote || !id) {
       toast.error("Please fill in date and note");
       return;
     }
-    setActionLoading(true);
-    try {
-      const res = await apiClient.post(`leads/${id}/follow-up`, {
-        date: followUpDate,
-        note: followUpNote,
-      });
-      setLead(res.data);
-      toast.success("Follow-up scheduled");
-      setFollowUpDate("");
-      setFollowUpNote("");
-      setIsFollowUpDialogOpen(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to schedule follow-up");
-    } finally {
-      setActionLoading(false);
-    }
+    addFollowUpMutation.mutate({
+      id,
+      date: followUpDate,
+      note: followUpNote
+    }, {
+      onSuccess: () => {
+        setFollowUpDate("");
+        setFollowUpNote("");
+        setActiveAction(null);
+      }
+    });
   };
 
   const handleAddNote = async () => {
-    if (!note.trim()) return;
-    try {
-      const res = await apiClient.put(`leads/${id}`, { notes: note });
-      setLead((prev) => prev ? { ...prev, notes: note } : prev);
-      toast.success("Note saved");
-      setNote("");
-    } catch {
-      toast.error("Failed to save note");
-    }
+    if (!note.trim() || !id) return;
+    updateLeadMutation.mutate({ id, data: { notes: note } }, {
+      onSuccess: () => setNote("")
+    });
   };
 
-  const openAssignDialog = async () => {
-    setIsAssignDialogOpen(true);
-    if (dealers.length === 0) {
-      try {
-        const res = await apiClient.get("dealers");
-        setDealers(res.data);
-      } catch {
-        toast.error("Failed to load dealer list");
-      }
-    }
+  const handleMarkDone = (followUpId: string) => {
+    if (!id) return;
+    markFollowUpMutation.mutate({ id, followUpId });
   };
 
-  if (loading) {
+  const handleCreateOrder = () => {
+    if (!id) return;
+    createOrderMutation.mutate(id);
+  };
+
+
+
+
+  const actionLoading = updateStatusMutation.isPending ||
+    assignDealerMutation.isPending ||
+    addFollowUpMutation.isPending ||
+    markFollowUpMutation.isPending ||
+    createOrderMutation.isPending ||
+    updateLeadMutation.isPending ||
+    deleteLeadMutation.isPending;
+
+  if (isLeadLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-9 w-20" />
+            <div>
+              <Skeleton className="h-8 w-48 mb-2" />
+              <div className="flex gap-3">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-6 w-20 rounded-full" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <Card className="p-6">
+              <Skeleton className="h-6 w-48 mb-4" />
+              <div className="grid grid-cols-2 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex gap-3">
+                    <Skeleton className="h-5 w-5 rounded-full" />
+                    <div className="flex-1">
+                      <Skeleton className="h-3 w-16 mb-1" />
+                      <Skeleton className="h-5 w-32" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <Skeleton className="h-6 w-48 mb-4" />
+              <div className="grid grid-cols-3 gap-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i}>
+                    <Skeleton className="h-3 w-24 mb-1" />
+                    <Skeleton className="h-5 w-32" />
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex gap-4 mb-4">
+                <Skeleton className="h-10 w-32" />
+                <Skeleton className="h-10 w-24" />
+                <Skeleton className="h-10 w-28" />
+              </div>
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="flex gap-3">
+                    <Skeleton className="h-2 w-2 rounded-full mt-2" />
+                    <div className="flex-1">
+                      <Skeleton className="h-4 w-full mb-1" />
+                      <Skeleton className="h-3 w-32" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          <div className="space-y-6">
+            <Card className="p-6">
+              <Skeleton className="h-6 w-32 mb-4" />
+              <div className="space-y-2">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            </Card>
+            <Card className="p-6">
+              <Skeleton className="h-6 w-32 mb-4" />
+              <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <Skeleton className="h-8 w-8 rounded-full" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
       </div>
     );
   }
@@ -222,19 +291,59 @@ export function LeadDetail() {
             <h1 className="text-2xl font-bold text-gray-900">
               {lead.customerName}
             </h1>
-            <p className="text-sm text-gray-600 mt-1">Lead ID: {lead._id.substring(lead._id.length - 6).toUpperCase()}</p>
+            <div className="flex items-center gap-3 mt-1">
+              <p className="text-sm text-gray-600">Lead ID: {lead._id.substring(lead._id.length - 6).toUpperCase()}</p>
+              <span className="text-gray-300">•</span>
+              <p className="text-xs text-gray-500">
+                Created {Math.floor((new Date().getTime() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24))} days ago
+              </p>
+            </div>
           </div>
         </div>
-        <StatusBadge status={lead.status} />
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-400 hover:text-red-600 hover:bg-red-50"
+            onClick={() => setIsDeleteAlertOpen(true)}
+            disabled={actionLoading}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete
+          </Button>
+          <StatusBadge status={lead.status} />
+        </div>
       </div>
+
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this lead and all associated follow-up history.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLeadMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => deleteLeadMutation.mutate(id!)}
+              disabled={deleteLeadMutation.isPending}
+            >
+              {deleteLeadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Delete Lead
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column */}
         <div className="lg:col-span-2 space-y-6">
           {/* Customer Information */}
           <Card className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Customer Information</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-0.5">Customer Information</h3>
+            <div className="grid grid-cols-2 gap-y-3 gap-x-4">
               <div className="flex items-start gap-3">
                 <Phone className="w-5 h-5 text-gray-400 mt-0.5" />
                 <div>
@@ -249,6 +358,28 @@ export function LeadDetail() {
                   <p className="text-sm font-medium text-gray-900">{lead.email || "—"}</p>
                 </div>
               </div>
+              {lead.status === "Lost" && (
+                <>
+                  {lead.lossReason && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-5 h-5 text-gray-400 mt-0.5" /> {/* Placeholder for alignment */}
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Reason for Loss</p>
+                        <p className="text-sm font-medium text-red-600">{lead.lossReason}</p>
+                      </div>
+                    </div>
+                  )}
+                  {lead.lossNotes && (
+                    <div className="flex items-start gap-3 col-span-2"> {/* Use col-span-2 for full width */}
+                      <div className="w-5 h-5 text-gray-400 mt-0.5" /> {/* Placeholder for alignment */}
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Loss Notes</p>
+                        <p className="text-sm text-gray-600 italic">{lead.lossNotes}</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
               <div className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
                 <div>
@@ -268,23 +399,27 @@ export function LeadDetail() {
 
           {/* Lead Details */}
           <Card className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Lead Details</h3>
-            <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-0.5">Lead Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-y-2 gap-x-6">
               <div>
                 <p className="text-sm text-gray-600 mb-1">Product Interest</p>
                 <p className="text-sm font-medium text-gray-900">{lead.product}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 mb-1">Source</p>
-                <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${lead.source === "Web" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
-                  {lead.source}
-                </span>
+                <div className="flex">
+                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${lead.source === "Web" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
+                    {lead.source}
+                  </span>
+                </div>
               </div>
               <div>
                 <p className="text-sm text-gray-600 mb-1">Assigned Date</p>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-400" />
-                  <p className="text-sm font-medium text-gray-900">{lead.assignedDate || "—"}</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {lead.assignedDate ? new Date(lead.assignedDate).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }) : "—"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -333,7 +468,8 @@ export function LeadDetail() {
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                   />
-                  <Button size="sm" onClick={handleAddNote} disabled={!note.trim()}>
+                  <Button size="sm" onClick={handleAddNote} disabled={!note.trim() || updateLeadMutation.isPending}>
+                    {updateLeadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                     Save Note
                   </Button>
                 </div>
@@ -342,24 +478,43 @@ export function LeadDetail() {
               <TabsContent value="followups" className="mt-4">
                 <div className="space-y-3">
                   {(lead.followUps && lead.followUps.length > 0) ? (
-                    lead.followUps.map((fu, index) => (
+                    lead.followUps.map((fu: any, index: number) => (
                       <div key={index} className="border border-gray-200 rounded-lg p-3">
                         <div className="flex items-center justify-between mb-1">
-                          <p className="text-sm font-medium text-gray-900">{fu.note}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-gray-900">{fu.note}</p>
+                            {fu.status === "Pending" && new Date(fu.date) < new Date(new Date().setHours(0, 0, 0, 0)) && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200 uppercase">
+                                ⚠️ Overdue
+                              </span>
+                            )}
+                          </div>
                           <span className={`text-xs px-2 py-1 rounded ${fu.status === "Completed" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
                             {fu.status}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1 mt-1">
-                          <Clock className="w-3 h-3 text-gray-400" />
-                          <p className="text-xs text-gray-600">Due: {new Date(fu.date).toLocaleDateString("en-IN")}</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-gray-400" />
+                            <p className="text-xs text-gray-600">Due: {new Date(fu.date).toLocaleDateString("en-IN")}</p>
+                          </div>
+                          {fu.status === "Pending" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              onClick={() => handleMarkDone(fu._id!)}
+                            >
+                              Mark as Done
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))
                   ) : (
                     <p className="text-sm text-gray-500">No follow-ups scheduled yet.</p>
                   )}
-                  <Button size="sm" onClick={() => setIsFollowUpDialogOpen(true)}>
+                  <Button size="sm" onClick={() => setActiveAction("followup")}>
                     Schedule Follow-up
                   </Button>
                 </div>
@@ -371,49 +526,182 @@ export function LeadDetail() {
         {/* Right Column - Actions */}
         <div className="space-y-6">
           <Card className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Actions</h3>
-            <div className="space-y-2">
-              <Button
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => { setNewStatus(lead.status); setIsStatusDialogOpen(true); }}
-              >
-                Change Status
-              </Button>
-              <Button
-                className="w-full justify-start"
-                variant="outline"
-                onClick={openAssignDialog}
-              >
-                <UserCheck className="w-4 h-4 mr-2" />
-                Assign to Dealer
-              </Button>
-              <Button
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setIsFollowUpDialogOpen(true)}
-              >
-                <Clock className="w-4 h-4 mr-2" />
-                Schedule Follow-up
-              </Button>
-              {lead.status === "Won" && (
-                <Button
-                  className="w-full justify-start bg-green-600 hover:bg-green-700 text-white"
-                  onClick={() => setIsConvertDialogOpen(true)}
-                >
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Convert to Customer
-                </Button>
+            <h3 className="text-lg font-semibold text-gray-900 mb-0.5">
+              {activeAction ? "Update Lead" : "Actions"}
+            </h3>
+
+            <div className="space-y-4">
+              {!activeAction ? (
+                <div className="space-y-2">
+                  <Button
+                    className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                    disabled={actionLoading}
+                    onClick={handleCreateOrder}
+                  >
+                    {createOrderMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                    Create Order
+                  </Button>
+                  <Button
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => {
+                      setNewStatus(lead.status);
+                      setActiveAction("status");
+                      setTimeout(() => setIsStatusSelectOpen(true), 100);
+                    }}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Change Status
+                  </Button>
+                  <Button
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setActiveAction("assign")}
+                  >
+                    <User className="w-4 h-4 mr-2" />
+                    Assign Dealer
+                  </Button>
+                  <Button
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setActiveAction("followup")}
+                  >
+                    <Calendar className="w-4 h-4 mr-2" />
+                    Schedule Follow-up
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                  {activeAction === "status" && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">New Status</Label>
+                      <Select
+                        open={isStatusSelectOpen}
+                        onOpenChange={setIsStatusSelectOpen}
+                        value={newStatus}
+                        onValueChange={setNewStatus}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+                        <SelectContent>
+                          {["New", "Assigned", "Discussion", "Negotiation", "Won", "Lost"].map(s => (
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {newStatus === "Lost" && (
+                        <div className="space-y-3 pt-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="loss-reason">Reason for Loss <span className="text-red-500">*</span></Label>
+                            <Select value={lossReason} onValueChange={setLossReason}>
+                              <SelectTrigger id="loss-reason"><SelectValue placeholder="Select reason" /></SelectTrigger>
+                              <SelectContent>
+                                {["Price Issue", "Not Interested", "Competitor", "No Response"].map(r => (
+                                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="loss-notes">Additional Notes (optional)</Label>
+                            <Textarea
+                              id="loss-notes"
+                              placeholder="Any extra details..."
+                              value={lossNotes}
+                              onChange={(e) => setLossNotes(e.target.value)}
+                              className="bg-white min-h-[80px]"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          onClick={handleChangeStatus}
+                          disabled={actionLoading || !newStatus || (newStatus === "Lost" && !lossReason)}
+                        >
+                          {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                        </Button>
+                        <Button variant="ghost" className="flex-1" onClick={() => { setActiveAction(null); setLossReason(""); setLossNotes(""); }}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeAction === "assign" && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Select Dealer</Label>
+                      <Select
+                        value={selectedDealerId}
+                        onValueChange={(val) => {
+                          setSelectedDealerId(val);
+                          const d = dealers.find((d: any) => d._id === val);
+                          setSelectedDealerName(d?.companyName || "");
+                        }}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Select a dealer" /></SelectTrigger>
+                        <SelectContent>
+                          {dealers.map((d: any) => (
+                            <SelectItem key={d._id} value={d._id}>{d.companyName}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          onClick={handleAssignDealer}
+                          disabled={actionLoading || !selectedDealerId}
+                        >
+                          {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Assign"}
+                        </Button>
+                        <Button variant="ghost" className="flex-1" onClick={() => setActiveAction(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeAction === "followup" && (
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="follow-up-date">Date</Label>
+                        <Input
+                          id="follow-up-date"
+                          type="date"
+                          min={new Date().toISOString().split("T")[0]}
+                          value={followUpDate}
+                          onChange={(e) => setFollowUpDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="follow-up-note">Note</Label>
+                        <Textarea
+                          id="follow-up-note"
+                          placeholder="e.g. Call to confirm demo"
+                          value={followUpNote}
+                          onChange={(e) => setFollowUpNote(e.target.value)}
+                          className="bg-white min-h-[80px]"
+                        />
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          onClick={handleScheduleFollowUp}
+                          disabled={actionLoading || !followUpDate || !followUpNote}
+                        >
+                          {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Schedule"}
+                        </Button>
+                        <Button variant="ghost" className="flex-1" onClick={() => setActiveAction(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </Card>
 
           {/* Lifecycle */}
           <Card className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Lead Lifecycle</h3>
-            <div className="space-y-3">
+            <h3 className="text-lg font-semibold text-gray-900 mb-0.5">Lead Lifecycle</h3>
+            <div className="space-y-2">
               {["New", "Assigned", "Discussion", "Negotiation", "Won"].map((stage, index) => {
-                const stages = ["New", "Assigned", "Discussion", "Negotiation", "Won", "Converted"];
+                const stages = ["New", "Assigned", "Discussion", "Negotiation", "Won"];
                 const currentIdx = stages.indexOf(lead.status);
                 const stageIdx = stages.indexOf(stage);
                 const isActive = stageIdx <= currentIdx;
@@ -433,116 +721,6 @@ export function LeadDetail() {
         </div>
       </div>
 
-      {/* Change Status Dialog */}
-      <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>Change Lead Status</DialogTitle>
-            <DialogDescription>Select a new status for this lead.</DialogDescription>
-          </DialogHeader>
-          <Select value={newStatus} onValueChange={setNewStatus}>
-            <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
-            <SelectContent>
-              {["New", "Assigned", "Discussion", "Negotiation", "Won", "Lost"].map(s => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsStatusDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleChangeStatus} disabled={actionLoading || !newStatus} className="bg-blue-600 hover:bg-blue-700">
-              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Update Status"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Assign to Dealer Dialog */}
-      <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>Assign to Dealer</DialogTitle>
-            <DialogDescription>Select a dealer to assign this lead to.</DialogDescription>
-          </DialogHeader>
-          <Select
-            value={selectedDealerId}
-            onValueChange={(val) => {
-              setSelectedDealerId(val);
-              const d = dealers.find(d => d._id === val);
-              setSelectedDealerName(d?.companyName || "");
-            }}
-          >
-            <SelectTrigger><SelectValue placeholder="Select a dealer" /></SelectTrigger>
-            <SelectContent>
-              {dealers.map(d => (
-                <SelectItem key={d._id} value={d._id}>{d.companyName} ({d.ownerName})</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAssignDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleAssignDealer} disabled={actionLoading || !selectedDealerId} className="bg-blue-600 hover:bg-blue-700">
-              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Assign"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Convert to Customer Dialog */}
-      <Dialog open={isConvertDialogOpen} onOpenChange={setIsConvertDialogOpen}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>Convert to Customer</DialogTitle>
-            <DialogDescription>
-              This will create a permanent Customer record for <strong>{lead.customerName}</strong> and mark this lead as Converted. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsConvertDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleConvertToCustomer} disabled={actionLoading} className="bg-green-600 hover:bg-green-700">
-              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Yes, Convert"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Schedule Follow-up Dialog */}
-      <Dialog open={isFollowUpDialogOpen} onOpenChange={setIsFollowUpDialogOpen}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>Schedule Follow-up</DialogTitle>
-            <DialogDescription>Set a date and note for the next follow-up action.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label htmlFor="follow-up-date">Date</Label>
-              <Input
-                id="follow-up-date"
-                type="date"
-                value={followUpDate}
-                onChange={(e) => setFollowUpDate(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="follow-up-note">Note</Label>
-              <Textarea
-                id="follow-up-note"
-                placeholder="e.g. Call to confirm product demo"
-                value={followUpNote}
-                onChange={(e) => setFollowUpNote(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsFollowUpDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleScheduleFollowUp} disabled={actionLoading || !followUpDate || !followUpNote} className="bg-blue-600 hover:bg-blue-700">
-              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Schedule"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Filter, Search, Calendar, AlertTriangle, CheckCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -12,19 +12,29 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Input } from "../components/ui/input";
+import { Skeleton } from "../components/ui/skeleton";
+import { useDebounce } from "../hooks/useDebounce";
 
 export function MaintenanceManagement() {
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
   const filteredRecords = mockMaintenanceRecords.filter((record) => {
     const matchesStatus = filterStatus === "all" || record.status.toLowerCase() === filterStatus;
     const matchesType = filterType === "all" || record.serviceType === filterType;
     const matchesSearch =
-      record.productSerial.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.dealer.toLowerCase().includes(searchQuery.toLowerCase());
+      record.productSerial.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      record.productName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      record.dealer.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
     return matchesStatus && matchesType && matchesSearch;
   });
 
@@ -60,29 +70,33 @@ export function MaintenanceManagement() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <p className="text-sm text-gray-600">Total Services</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">
-            {mockMaintenanceRecords.length}
-          </p>
+          {isLoading ? (
+            <Skeleton className="h-8 w-16 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-gray-900 mt-1">
+              {mockMaintenanceRecords.length}
+            </p>
+          )}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Upcoming</p>
           <div className="flex items-center gap-2 mt-1">
             <Calendar className="w-5 h-5 text-blue-500" />
-            <p className="text-2xl font-bold text-blue-600">{upcomingCount}</p>
+            {isLoading ? <Skeleton className="h-8 w-12" /> : <p className="text-2xl font-bold text-blue-600">{upcomingCount}</p>}
           </div>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Overdue</p>
           <div className="flex items-center gap-2 mt-1">
             <AlertTriangle className="w-5 h-5 text-red-500" />
-            <p className="text-2xl font-bold text-red-600">{overdueCount}</p>
+            {isLoading ? <Skeleton className="h-8 w-12" /> : <p className="text-2xl font-bold text-red-600">{overdueCount}</p>}
           </div>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Completed</p>
           <div className="flex items-center gap-2 mt-1">
             <CheckCircle className="w-5 h-5 text-green-500" />
-            <p className="text-2xl font-bold text-green-600">{completedCount}</p>
+            {isLoading ? <Skeleton className="h-8 w-12" /> : <p className="text-2xl font-bold text-green-600">{completedCount}</p>}
           </div>
         </Card>
       </div>
@@ -161,7 +175,26 @@ export function MaintenanceManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredRecords.map((record) => {
+              {isLoading ? (
+                Array(5).fill(0).map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-24 border font-mono" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
+                    <td className="px-6 py-4">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-3 w-16" />
+                      </div>
+                    </td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-8 w-24" /></td>
+                  </tr>
+                ))
+              ) : (
+                filteredRecords.map((record) => {
                 const dueDate = new Date(record.dueDate);
                 const today = new Date();
                 const daysUntilDue = Math.ceil(
@@ -222,8 +255,9 @@ export function MaintenanceManagement() {
                     </td>
                   </tr>
                 );
-              })}
-            </tbody>
+              })
+            )}
+          </tbody>
           </table>
         </div>
       </Card>

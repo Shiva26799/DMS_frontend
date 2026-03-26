@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { Plus, Filter, Search } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
-import { mockOrders } from "../data/mockData";
+import { mockOrders, mockDealers, mockProducts } from "../data/mockData";
+import { useDealers } from "../context/DealerContext";
+import { useOrders } from "../context/OrderContext";
 import {
   Select,
   SelectContent,
@@ -12,27 +14,90 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { Skeleton } from "../components/ui/skeleton";
 import { Input } from "../components/ui/input";
 import { Progress } from "../components/ui/progress";
+import { useDebounce } from "../hooks/useDebounce";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "../components/ui/dialog";
+import { Label } from "../components/ui/label";
 
 export function OrderManagement() {
+  const { dealers } = useDealers();
+  const { orders, addOrder } = useOrders();
+  const [isLoading, setIsLoading] = useState(true);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
-  const filteredOrders = mockOrders.filter((order) => {
+  // Form state for new order
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    dealerId: "",
+    productId: "",
+    quantity: "1",
+  });
+
+  const handleCreateOrder = () => {
+    const selectedDealer = dealers.find((d) => d._id === formData.dealerId);
+    const selectedProduct = mockProducts.find((p) => p.id === formData.productId);
+
+    if (!selectedDealer || !selectedProduct) return;
+
+    const quantity = Number(formData.quantity) || 1;
+    const totalOrderValue = selectedProduct.price * quantity;
+
+    const newOrder: any = {
+      _id: `ORD${Date.now()}`,
+      id: `ORD${Date.now()}`, // Keep both for safety across different mock formats
+      orderNumber: `ORD-2026-${(orders.length + 1).toString().padStart(3, "0")}`,
+      dealer: selectedDealer.companyName,
+      dealerId: selectedDealer._id,
+      product: `${selectedProduct.name} (x${quantity})`,
+      quantity: quantity,
+      totalValue: totalOrderValue,
+      orderDate: new Date().toISOString().split("T")[0],
+      paymentStatus: "Pending",
+      deliveryStatus: "Processing",
+      currentStage: "Order Approval",
+      stageProgress: 10,
+    };
+
+    addOrder(newOrder);
+    setFormData({
+      dealerId: "",
+      productId: "",
+      quantity: "1",
+    });
+    setIsDialogOpen(false);
+  };
+
+  const filteredOrders = orders.filter((order) => {
     const matchesStatus =
       filterStatus === "all" ||
       order.paymentStatus.toLowerCase() === filterStatus ||
       order.deliveryStatus.toLowerCase().includes(filterStatus);
     const matchesSearch =
-      order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.dealer.toLowerCase().includes(searchQuery.toLowerCase());
+      order.orderNumber.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      order.dealer.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
     return matchesStatus && matchesSearch;
   });
 
-  const totalOrders = mockOrders.length;
-  const totalValue = mockOrders.reduce((sum, order) => sum + order.totalValue, 0);
-  const pendingApprovals = mockOrders.filter(
+  const totalOrders = orders.length;
+  const totalValue = orders.reduce((sum, order) => sum + order.totalValue, 0);
+  const pendingApprovals = orders.filter(
     (o) => o.currentStage === "Payment Verification" || o.currentStage === "Order Approval"
   ).length;
 
@@ -46,35 +111,113 @@ export function OrderManagement() {
             Complete order lifecycle tracking
           </p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700">
-          <Plus className="w-4 h-4 mr-2" />
-          Create Order
-        </Button>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="w-4 h-4 mr-2" />
+              Create Order
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Create New Order</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="dealer">Select Dealer</Label>
+                <Select
+                  value={formData.dealerId}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, dealerId: value })
+                  }
+                >
+                  <SelectTrigger id="dealer">
+                    <SelectValue placeholder="Choose a dealer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dealers.map((d) => (
+                      <SelectItem key={d._id} value={d._id}>
+                        {d.companyName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="product">Select Product</Label>
+                <Select
+                  value={formData.productId}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, productId: value })
+                  }
+                >
+                  <SelectTrigger id="product">
+                    <SelectValue placeholder="Choose a product" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mockProducts.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} (₹{(p.price / 100000).toFixed(1)}L)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="quantity">Quantity</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  min="1"
+                  value={formData.quantity}
+                  onChange={(e) =>
+                    setFormData({ ...formData, quantity: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={handleCreateOrder}
+              >
+                Create Order
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <p className="text-sm text-gray-600">Total Orders</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{totalOrders}</p>
+          {isLoading ? <Skeleton className="h-8 w-16 mt-1" /> : <p className="text-2xl font-bold text-gray-900 mt-1">{totalOrders}</p>}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Total Value</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">
-            ₹{(totalValue / 10000000).toFixed(1)}Cr
-          </p>
+          {isLoading ? (
+            <Skeleton className="h-8 w-24 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-green-600 mt-1">
+              ₹{(totalValue / 10000000).toFixed(1)}Cr
+            </p>
+          )}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Pending Approvals</p>
-          <p className="text-2xl font-bold text-orange-600 mt-1">
-            {pendingApprovals}
-          </p>
+          {isLoading ? <Skeleton className="h-8 w-12 mt-1" /> : <p className="text-2xl font-bold text-orange-600 mt-1">{pendingApprovals}</p>}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Avg Order Value</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">
-            ₹{(totalValue / totalOrders / 100000).toFixed(1)}L
-          </p>
+          {isLoading ? (
+            <Skeleton className="h-8 w-24 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-gray-900 mt-1">
+              ₹{(totalValue / totalOrders / 100000).toFixed(1)}L
+            </p>
+          )}
         </Card>
       </div>
 
@@ -145,7 +288,32 @@ export function OrderManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredOrders.map((order) => (
+              {isLoading ? (
+                Array(5).fill(0).map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
+                    <td className="px-6 py-4">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-3 w-12" />
+                      </div>
+                    </td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-16" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-6 py-4">
+                      <div className="space-y-2">
+                        <Skeleton className="h-2 w-24" />
+                        <Skeleton className="h-2 w-16" />
+                      </div>
+                    </td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-8 w-24" /></td>
+                  </tr>
+                ))
+              ) : (
+                filteredOrders.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <span className="text-sm font-medium text-blue-600">
@@ -189,7 +357,7 @@ export function OrderManagement() {
                     </Link>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

@@ -30,18 +30,22 @@ export interface Lead {
 }
 
 export interface Dealer {
-  id: string;
-  name: string;
+  _id: string;
+  companyName: string;
+  ownerName: string;
   code: string;
   region: string;
   city: string;
-  contactPerson: string;
-  phone: string;
+  address: string;
+  pincode: string;
+  contact: string;
   email: string;
+  gstin?: string;
+  pan?: string;
   creditLimit: number;
   outstandingAmount: number;
   performance: number;
-  status: "Active" | "Inactive" | "Suspended";
+  status: "Pending" | "Approved" | "Rejected";
   joinedDate: string;
   totalOrders: number;
   totalRevenue: number;
@@ -83,7 +87,7 @@ export interface Order {
   quantity: number;
   totalValue: number;
   orderDate: string;
-  paymentStatus: "Paid" | "Unpaid" | "Partial";
+  paymentStatus: "Paid" | "Unpaid" | "Partial" | "Pending";
   deliveryStatus: string;
   currentStage: string;
   stageProgress: number;
@@ -187,86 +191,106 @@ export const mockLeads: Lead[] = [
 // Mock Dealers
 export const mockDealers: Dealer[] = [
   {
-    id: "D001",
-    name: "Punjab Agro Solutions",
+    _id: "D001",
+    companyName: "Punjab Agro Solutions",
+    ownerName: "Harpreet Singh",
     code: "DLR-PB-001",
     region: "Punjab",
     city: "Ludhiana",
-    contactPerson: "Harpreet Singh",
-    phone: "+91 98765 00001",
+    address: "123, Agro Lane, Industrial Area",
+    pincode: "141001",
+    contact: "+91 98765 00001",
     email: "contact@punjabagro.com",
+    gstin: "03AAAAA0000A1Z5",
+    pan: "AAAAA0000A",
     creditLimit: 5000000,
     outstandingAmount: 2300000,
     performance: 92,
-    status: "Active",
+    status: "Approved",
     joinedDate: "2024-03-15",
     totalOrders: 45,
     totalRevenue: 8500000,
   },
   {
-    id: "D002",
-    name: "South India Equipment",
+    _id: "D002",
+    companyName: "South India Equipment",
+    ownerName: "Ravi Kumar",
     code: "DLR-AP-002",
     region: "Andhra Pradesh",
     city: "Vijayawada",
-    contactPerson: "Ravi Kumar",
-    phone: "+91 98765 00002",
+    address: "45, Marine Drive, Tech Park",
+    pincode: "520001",
+    contact: "+91 98765 00002",
     email: "contact@southindiaequip.com",
+    gstin: "37AAAAA0000A1Z5",
+    pan: "BBBBB1111B",
     creditLimit: 7000000,
     outstandingAmount: 3500000,
     performance: 88,
-    status: "Active",
+    status: "Approved",
     joinedDate: "2024-01-20",
     totalOrders: 62,
     totalRevenue: 12500000,
   },
   {
-    id: "D003",
-    name: "Haryana Farm Tech",
+    _id: "D003",
+    companyName: "Haryana Farm Tech",
+    ownerName: "Sunil Sharma",
     code: "DLR-HR-003",
     region: "Haryana",
     city: "Karnal",
-    contactPerson: "Sunil Sharma",
-    phone: "+91 98765 00003",
+    address: "89, Grain Market, Sector 12",
+    pincode: "132001",
+    contact: "+91 98765 00003",
     email: "contact@haryanafarm.com",
+    gstin: "06AAAAA0000A1Z5",
+    pan: "CCCCC2222C",
     creditLimit: 4000000,
     outstandingAmount: 1800000,
     performance: 85,
-    status: "Active",
+    status: "Approved",
     joinedDate: "2024-06-10",
     totalOrders: 38,
     totalRevenue: 6800000,
   },
   {
-    id: "D004",
-    name: "UP Machinery Hub",
+    _id: "D004",
+    companyName: "UP Machinery Hub",
+    ownerName: "Ajay Verma",
     code: "DLR-UP-004",
     region: "Uttar Pradesh",
     city: "Meerut",
-    contactPerson: "Ajay Verma",
-    phone: "+91 98765 00004",
+    address: "Shop 12, Highway Plaza",
+    pincode: "250001",
+    contact: "+91 98765 00004",
     email: "contact@upmachinery.com",
+    gstin: "09AAAAA0000A1Z5",
+    pan: "DDDDD3333D",
     creditLimit: 6000000,
     outstandingAmount: 5500000,
     performance: 75,
-    status: "Active",
+    status: "Approved",
     joinedDate: "2023-11-05",
     totalOrders: 52,
     totalRevenue: 9500000,
   },
   {
-    id: "D005",
-    name: "Maharashtra Agri Solutions",
+    _id: "D005",
+    companyName: "Maharashtra Agri Solutions",
+    ownerName: "Prakash Jadhav",
     code: "DLR-MH-005",
     region: "Maharashtra",
     city: "Nashik",
-    contactPerson: "Prakash Jadhav",
-    phone: "+91 98765 00005",
+    address: "Vineyard Street, Near Station",
+    pincode: "422001",
+    contact: "+91 98765 00005",
     email: "contact@maharashtraagri.com",
+    gstin: "27AAAAA0000A1Z5",
+    pan: "EEEEE4444E",
     creditLimit: 5500000,
     outstandingAmount: 1200000,
     performance: 95,
-    status: "Active",
+    status: "Approved",
     joinedDate: "2024-02-28",
     totalOrders: 48,
     totalRevenue: 8900000,

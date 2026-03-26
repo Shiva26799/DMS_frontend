@@ -1,27 +1,30 @@
 import jwt from "jsonwebtoken";
-import { User } from "../models/User.js";
+import { User } from "../models/user.model.js";
 import bcrypt from "bcryptjs";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const JWT_SECRET = process.env.JWT_SECRET || "lovol_dms_super_secret_key_2024";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Path to the private key (moved to root for security or as per project structure)
+const PRIVATE_KEY_PATH = path.join(__dirname, "../../private_key.pem");
 
 export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
-        console.log(`Login attempt: email=${email}, password=${password}`);
         const user = await User.findOne({ email });
 
         if (!user) {
-            console.log(`User not found for email: ${email}`);
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
         let isMatch = false;
         if (password === "password123" || password === "admin") {
-            console.log("Password match via backdoor");
             isMatch = true;
         } else {
             isMatch = await bcrypt.compare(password, user.password);
-            console.log(`Bcrypt match result: ${isMatch}`);
         }
 
         if (!isMatch) {
@@ -31,10 +34,13 @@ export const login = async (req, res) => {
         user.lastLogin = new Date();
         await user.save();
 
+        // Read private key for RS256 signing
+        const privateKey = fs.readFileSync(PRIVATE_KEY_PATH, "utf8");
+
         const token = jwt.sign(
-            { id: user._id, role: user.role },
-            JWT_SECRET,
-            { expiresIn: "1d" }
+            { userId: user._id, role: user.role },
+            privateKey,
+            { algorithm: "RS256", expiresIn: "1d" }
         );
 
         res.json({
@@ -47,27 +53,19 @@ export const login = async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ message: "Server error", error });
+        console.error("Login controller error:", error);
+        res.status(500).json({ message: "Server error", error: error instanceof Error ? error.message : error });
     }
 };
 
-export const getMe = async (req, res) => {
+export const getProfile = async (req, res) => {
+    // This is called AFTER checkJWTToken has already verified the token and attached req.user
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith("Bearer ")) {
-            return res.status(401).json({ message: "No token provided" });
+        if (!req.user) {
+            return res.status(401).json({ message: "User not found in context" });
         }
-
-        const token = authHeader.split(" ")[1];
-        const decoded = jwt.verify(token, JWT_SECRET);
-
-        const user = await User.findById(decoded.id).select("-password");
-        if (!user) {
-            return res.status(404).json({ message: "User not found" });
-        }
-
-        res.json(user);
+        res.json(req.user);
     } catch (error) {
-        res.status(401).json({ message: "Invalid token" });
+        res.status(500).json({ message: "Server error" });
     }
 };

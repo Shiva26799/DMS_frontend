@@ -13,28 +13,41 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
 
-const navigation = [
-  { name: "Executive Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Lead Management", href: "/leads", icon: Users },
-  { name: "Dealer Management", href: "/dealers", icon: UserCheck },
+interface NavItem {
+  name: string;
+  href?: string;
+  icon?: any;
+  allowedRoles?: string[];
+  submenu?: NavItem[];
+}
+
+const navigation: NavItem[] = [
+  { name: "Executive Dashboard", href: "/", icon: LayoutDashboard, allowedRoles: ["Admin", "Dealer"] },
+  { name: "Lead Management", href: "/leads", icon: Users, allowedRoles: ["Admin", "Dealer"] },
+  { name: "Dealer Management", href: "/dealers", icon: UserCheck, allowedRoles: ["Admin"] },
   {
     name: "Products & Inventory",
     icon: Package,
+    allowedRoles: ["Admin", "Dealer"],
     submenu: [
-      { name: "Product Catalogue", href: "/products" },
-      { name: "Inventory", href: "/inventory" },
+      { name: "Product Catalogue", href: "/products", allowedRoles: ["Admin", "Dealer"] },
+      { name: "Inventory", href: "/inventory", allowedRoles: ["Admin"] },
     ],
   },
-  { name: "Order Management", href: "/orders", icon: ShoppingCart },
-  { name: "Warranty Management", href: "/warranty", icon: Shield },
-  { name: "Maintenance", href: "/maintenance", icon: Wrench },
-  { name: "Reports", href: "/reports", icon: BarChart3 },
-  { name: "Settings", href: "/settings", icon: SettingsIcon },
+  { name: "Order Management", href: "/orders", icon: ShoppingCart, allowedRoles: ["Admin", "Dealer"] },
+  { name: "Warranty Management", href: "/warranty", icon: Shield, allowedRoles: ["Admin", "Dealer"] },
+  { name: "Maintenance", href: "/maintenance", icon: Wrench, allowedRoles: ["Admin", "Dealer"] },
+  { name: "Reports", href: "/reports", icon: BarChart3, allowedRoles: ["Admin"] },
+  { name: "Settings", href: "/settings", icon: SettingsIcon, allowedRoles: ["Admin"] },
 ];
 
 export function Sidebar() {
   const location = useLocation();
+  const { user } = useAuth();
+  const role = user?.role;
+
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
     "Products & Inventory"
   );
@@ -49,6 +62,22 @@ export function Sidebar() {
   const toggleMenu = (name: string) => {
     setExpandedMenu(expandedMenu === name ? null : name);
   };
+
+  // Filter top-level items
+  const filteredNavigation = navigation
+    .filter((item) => !item.allowedRoles || item.allowedRoles.includes(role as string))
+    .map((item) => {
+      // If item has a submenu, filter that too
+      if (item.submenu) {
+        return {
+          ...item,
+          submenu: item.submenu.filter(
+            (sub) => !sub.allowedRoles || sub.allowedRoles.includes(role as string)
+          ),
+        };
+      }
+      return item;
+    });
 
   return (
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
@@ -77,11 +106,11 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
-        {navigation.map((item) => {
-          if (item.submenu) {
+        {filteredNavigation.map((item) => {
+          if (item.submenu && item.submenu.length > 0) {
             const isExpanded = expandedMenu === item.name;
             const hasActiveSubmenu = item.submenu.some((sub) =>
-              isActive(sub.href)
+              isActive(sub.href || "")
             );
 
             return (
@@ -107,8 +136,8 @@ export function Sidebar() {
                     {item.submenu.map((subItem) => (
                       <Link
                         key={subItem.href}
-                        to={subItem.href}
-                        className={`block px-3 py-2 rounded-lg text-sm transition-colors ${isActive(subItem.href)
+                        to={subItem.href || "#"}
+                        className={`block px-3 py-2 rounded-lg text-sm transition-colors ${isActive(subItem.href || "")
                           ? "bg-blue-50 text-blue-600 font-medium"
                           : "text-gray-600 hover:bg-gray-100"
                           }`}
@@ -125,13 +154,13 @@ export function Sidebar() {
           return (
             <Link
               key={item.name}
-              to={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-1 ${isActive(item.href)
+              to={item.href || "#"}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-1 ${isActive(item.href || "")
                 ? "bg-blue-50 text-blue-600 font-medium"
                 : "text-gray-700 hover:bg-gray-100"
                 }`}
             >
-              <item.icon className="w-5 h-5" />
+              {item.icon && <item.icon className="w-5 h-5" />}
               <span>{item.name}</span>
             </Link>
           );

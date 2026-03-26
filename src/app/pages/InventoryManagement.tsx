@@ -1,8 +1,12 @@
 import { apiClient } from "../api/client";
+import { useProducts, useWarehouses, useUpdateProduct } from "../hooks/useProducts";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useDebounce } from "../hooks/useDebounce";
 import * as XLSX from "xlsx";
 import { Filter, Search, Download, AlertTriangle, Edit, Package2, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Skeleton } from "../components/ui/skeleton";
 import { Button } from "../components/ui/button";
+
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
 import {
@@ -29,13 +33,11 @@ function UpdateStockDialog({
   onClose,
   selectedItem,
   warehouses,
-  onUpdateSuccess,
 }: {
   isOpen: boolean;
   onClose: (isOpen: boolean) => void;
   selectedItem: any;
   warehouses: any[];
-  onUpdateSuccess: (updatedItem: any) => void;
 }) {
   const [updateForm, setUpdateForm] = useState<{
     stockAvailable: string | number;
@@ -58,31 +60,25 @@ function UpdateStockDialog({
     }
   }, [isOpen, selectedItem]);
 
+  const updateMutation = useUpdateProduct();
+
   const handleUpdateStock = async () => {
     if (!selectedItem) return;
-    setLoading(true);
-    try {
-      const reorderLevel = updateForm.reorderLevel === "" ? 1 : Number(updateForm.reorderLevel);
-      
-      await apiClient.put(`/products/${selectedItem._id}`, {
+    
+    const reorderLevel = updateForm.reorderLevel === "" ? 1 : Number(updateForm.reorderLevel);
+    
+    updateMutation.mutate({
+      id: selectedItem._id,
+      data: {
         stockAvailable: Number(updateForm.stockAvailable),
         warehouseId: updateForm.warehouseId,
         reorderLevel: reorderLevel,
-      });
-
-      toast.success("Inventory updated successfully");
-      onUpdateSuccess({
-        ...selectedItem,
-        stockAvailable: Number(updateForm.stockAvailable),
-        reorderLevel: reorderLevel,
-        warehouseId: warehouses.find((w) => w._id === updateForm.warehouseId) || selectedItem.warehouseId,
-      });
-      onClose(false);
-    } catch (err) {
-      toast.error("Failed to update inventory");
-    } finally {
-      setLoading(false);
-    }
+      }
+    }, {
+      onSuccess: () => {
+        onClose(false);
+      }
+    });
   };
 
   return (
@@ -139,7 +135,7 @@ function UpdateStockDialog({
                 <SelectValue placeholder="Select warehouse" />
               </SelectTrigger>
               <SelectContent>
-                {warehouses.map((warehouse) => (
+                {warehouses.map((warehouse: any) => (
                   <SelectItem key={warehouse._id} value={warehouse._id}>
                     <span className="font-medium">{warehouse.name}</span>
                     <span className="ml-2 text-xs text-gray-500">
@@ -202,41 +198,23 @@ export function InventoryManagement() {
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [inventory, setInventory] = useState<any[]>([]);
-  const [warehouses, setWarehouses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
   const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  
   const [suggestionsPage, setSuggestionsPage] = useState(1);
   const suggestionsPerPage = 5;
+
+  const { data: inventory = [], isLoading: isInventoryLoading } = useProducts();
+  const { data: warehouses = [], isLoading: isWarehousesLoading } = useWarehouses();
+  
+  const loading = isInventoryLoading || isWarehousesLoading;
 
   useEffect(() => {
     setCurrentPage(1);
     setSuggestionsPage(1);
-  }, [searchQuery, filterWarehouse, filterCategory, filterStatus, itemsPerPage]);
-
-  useEffect(() => {
-    fetchInitialData(true);
-  }, []);
-
-  const fetchInitialData = async (isFirstLoad = false) => {
-    if (isFirstLoad) setLoading(true);
-    try {
-      const [productsRes, warehousesRes] = await Promise.all([
-        apiClient.get("products"),
-        apiClient.get("warehouses")
-      ]);
-      setInventory(productsRes.data);
-      setWarehouses(warehousesRes.data);
-    } catch (error) {
-      toast.error("Failed to load inventory data");
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [debouncedSearchQuery, filterWarehouse, filterCategory, filterStatus, itemsPerPage]);
 
   const getStatus = useCallback((item: any) => {
     if (item.stockAvailable === 0) return "Out of Stock";
@@ -246,7 +224,7 @@ export function InventoryManagement() {
   }, []);
 
   const filteredInventory = useMemo(() => {
-    return inventory.filter((item) => {
+    return inventory.filter((item: any) => {
       const matchesWarehouse = filterWarehouse === "all" || item.warehouseId?._id === filterWarehouse;
       const matchesCategory = filterCategory === "all" || item.category === filterCategory;
 
@@ -254,13 +232,13 @@ export function InventoryManagement() {
       const matchesStatus = filterStatus === "all" || status.toLowerCase() === filterStatus;
 
       const matchesSearch =
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (item.sku && item.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (item.partNumber && item.partNumber.toLowerCase().includes(searchQuery.toLowerCase()));
+        item.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        (item.sku && item.sku.toLowerCase().includes(debouncedSearchQuery.toLowerCase())) ||
+        (item.partNumber && item.partNumber.toLowerCase().includes(debouncedSearchQuery.toLowerCase()));
 
       return matchesWarehouse && matchesCategory && matchesStatus && matchesSearch;
     });
-  }, [inventory, filterWarehouse, filterCategory, filterStatus, searchQuery, getStatus]);
+  }, [inventory, filterWarehouse, filterCategory, filterStatus, debouncedSearchQuery, getStatus]);
 
   const totalPages = Math.ceil(filteredInventory.length / itemsPerPage);
   
@@ -270,19 +248,19 @@ export function InventoryManagement() {
   }, [filteredInventory, currentPage, itemsPerPage]);
 
   const totalValue = useMemo(() => {
-    return inventory.reduce((sum, item) => {
+    return inventory.reduce((sum: number, item: any) => {
       return sum + (item.stockAvailable * (item.price || 0));
     }, 0);
   }, [inventory]);
 
   const lowStockCount = useMemo(() => {
     return inventory.filter(
-      (item) => getStatus(item) !== "Normal"
+      (item: any) => getStatus(item) !== "Normal"
     ).length;
   }, [inventory, getStatus]);
 
   const reorderSuggestions = useMemo(() => {
-    return inventory.filter((item) => getStatus(item) !== "Normal");
+    return inventory.filter((item: any) => getStatus(item) !== "Normal");
   }, [inventory, getStatus]);
 
   const suggestionsTotalPages = Math.ceil(reorderSuggestions.length / suggestionsPerPage);
@@ -297,21 +275,6 @@ export function InventoryManagement() {
     setIsUpdateDialogOpen(true);
   };
 
-  const onUpdateSuccess = (updatedItem: any) => {
-    setInventory((prev) =>
-      prev.map((item) =>
-        item._id === updatedItem._id
-          ? {
-              ...item,
-              stockAvailable: updatedItem.stockAvailable,
-              reorderLevel: updatedItem.reorderLevel,
-              warehouseId: updatedItem.warehouseId,
-            }
-          : item
-      )
-    );
-  };
-
   const handleExportReport = () => {
     try {
       if (filteredInventory.length === 0) {
@@ -319,7 +282,7 @@ export function InventoryManagement() {
         return;
       }
 
-      const reportData = filteredInventory.map(item => ({
+      const reportData = filteredInventory.map((item: any) => ({
         "Part Number / SKU": item.partNumber || item.sku || "-",
         "Product Name": item.name,
         "Category": item.category,
@@ -356,13 +319,7 @@ export function InventoryManagement() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-      </div>
-    );
-  }
+
 
   return (
     <div className="p-6 space-y-6">
@@ -389,30 +346,47 @@ export function InventoryManagement() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <p className="text-sm text-gray-600">Total Products</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">
-            {inventory.length}
-          </p>
+          {isInventoryLoading ? (
+            <Skeleton className="h-8 w-16 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-gray-900 mt-1">
+              {inventory.length}
+            </p>
+          )}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Total Inventory Value</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">
-            ₹{totalValue.toLocaleString()}
-          </p>
+          {isInventoryLoading ? (
+            <Skeleton className="h-8 w-32 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-green-600 mt-1">
+              ₹{totalValue.toLocaleString()}
+            </p>
+          )}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Low Stock Alert (≤ 5)</p>
           <div className="flex items-center gap-2 mt-1">
             <AlertTriangle className="w-5 h-5 text-orange-500" />
-            <p className="text-2xl font-bold text-orange-600">{lowStockCount}</p>
+            {isInventoryLoading ? (
+              <Skeleton className="h-8 w-12" />
+            ) : (
+              <p className="text-2xl font-bold text-orange-600">{lowStockCount}</p>
+            )}
           </div>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Active Warehouses</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">
-            {warehouses.length}
-          </p>
+          {isWarehousesLoading ? (
+            <Skeleton className="h-8 w-12 mt-1" />
+          ) : (
+            <p className="text-2xl font-bold text-gray-900 mt-1">
+              {warehouses.length}
+            </p>
+          )}
         </Card>
       </div>
+
 
       {/* Filters */}
       <Card className="p-4">
@@ -435,7 +409,7 @@ export function InventoryManagement() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Warehouses</SelectItem>
-              {warehouses.map((warehouse) => (
+              {warehouses.map((warehouse: any) => (
                 <SelectItem key={warehouse._id} value={warehouse._id}>
                   {warehouse.name}
                 </SelectItem>
@@ -496,64 +470,89 @@ export function InventoryManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {paginatedInventory.map((item) => (
-                <tr key={item._id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-medium text-gray-900">
-                      {item.partNumber || item.sku || "-"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <Package2 className="w-4 h-4 text-gray-400 shrink-0" />
-                      <span className="text-sm text-gray-900 line-clamp-1">{item.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider ${item.category === "Harvester"
-                      ? "bg-blue-100 text-blue-700"
-                      : "bg-purple-100 text-purple-700"
-                      }`}>
-                      {item.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {item.warehouseId?.name || "Unassigned"}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {item.warehouseId?.city || ""}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-right whitespace-nowrap">
-                    <span
-                      className={`text-sm font-bold ${item.stockAvailable > (item.reorderLevel || 5)
-                        ? "text-green-600"
-                        : "text-red-600"
-                        }`}
-                    >
-                      {item.stockAvailable}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center whitespace-nowrap">
-                    <StatusBadge status={getStatus(item)} />
-                  </td>
-                  <td className="px-6 py-4 text-right whitespace-nowrap">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenUpdateDialog(item)}
-                      className="h-8 py-0"
-                    >
-                      <Edit className="w-3.5 h-3.5 mr-1.5" />
-                      Update
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {isInventoryLoading ? (
+                Array.from({ length: itemsPerPage }).map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-6 py-4"><Skeleton className="h-5 w-24" /></td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <Skeleton className="h-4 w-4 rounded-full" />
+                        <Skeleton className="h-5 w-48" />
+                      </div>
+                    </td>
+                    <td className="px-6 py-4"><Skeleton className="h-5 w-20" /></td>
+                    <td className="px-6 py-4">
+                      <div className="space-y-1">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-20" />
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right"><Skeleton className="h-5 w-12 ml-auto" /></td>
+                    <td className="px-6 py-4 text-center"><Skeleton className="h-6 w-20 mx-auto rounded-full" /></td>
+                    <td className="px-6 py-4 text-right"><Skeleton className="h-8 w-24 ml-auto" /></td>
+                  </tr>
+                ))
+              ) : (
+                paginatedInventory.map((item: any) => (
+                  <tr key={item._id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-medium text-gray-900">
+                        {item.partNumber || item.sku || "-"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <Package2 className="w-4 h-4 text-gray-400 shrink-0" />
+                        <span className="text-sm text-gray-900 line-clamp-1">{item.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider ${item.category === "Harvester"
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-purple-100 text-purple-700"
+                        }`}>
+                        {item.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {item.warehouseId?.name || "Unassigned"}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {item.warehouseId?.city || ""}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                      <span
+                        className={`text-sm font-bold ${item.stockAvailable > (item.reorderLevel || 5)
+                          ? "text-green-600"
+                          : "text-red-600"
+                          }`}
+                      >
+                        {item.stockAvailable}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center whitespace-nowrap">
+                      <StatusBadge status={getStatus(item)} />
+                    </td>
+                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenUpdateDialog(item)}
+                        className="h-8 py-0"
+                      >
+                        <Edit className="w-3.5 h-3.5 mr-1.5" />
+                        Update
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
+
           </table>
         </div>
 
@@ -618,33 +617,55 @@ export function InventoryManagement() {
           </Button>
         </div>
         <div className="space-y-3">
-          {paginatedSuggestions.map((item) => (
-            <div
-              key={item._id}
-              className="flex items-center justify-between border border-gray-200 rounded-lg p-4"
-            >
-              <div className="flex items-center gap-4">
-                <AlertTriangle className="w-5 h-5 text-red-500" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {item.partNumber || item.sku || "N/A"} - {item.name}
+          {isInventoryLoading ? (
+            Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between border border-gray-200 rounded-lg p-4"
+              >
+                <div className="flex items-center gap-4">
+                  <Skeleton className="w-5 h-5 rounded-full" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-64" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                </div>
+                <div className="text-right space-y-2">
+                  <Skeleton className="h-4 w-48 ml-auto" />
+                  <Skeleton className="h-4 w-32 ml-auto" />
+                </div>
+              </div>
+            ))
+          ) : (
+            paginatedSuggestions.map((item: any) => (
+              <div
+                key={item._id}
+                className="flex items-center justify-between border border-gray-200 rounded-lg p-4"
+              >
+                <div className="flex items-center gap-4">
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {item.partNumber || item.sku || "N/A"} - {item.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {item.warehouseId?.name || "Unassigned"}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-600">
+                    Available: {item.stockAvailable} / Reorder Level: {item.reorderLevel || 5}
                   </p>
-                  <p className="text-xs text-gray-500">
-                    {item.warehouseId?.name || "Unassigned"}
+                  <p className="text-sm font-medium text-blue-600">
+                    Suggested Order: {(item.reorderLevel || 5) * 2 - item.stockAvailable} units
                   </p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-600">
-                  Available: {item.stockAvailable} / Reorder Level: {item.reorderLevel || 5}
-                </p>
-                <p className="text-sm font-medium text-blue-600">
-                  Suggested Order: {(item.reorderLevel || 5) * 2 - item.stockAvailable} units
-                </p>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
+
 
         {/* Reorder Suggestions Pagination Controls */}
         {suggestionsTotalPages > 1 && (
@@ -685,7 +706,6 @@ export function InventoryManagement() {
         onClose={setIsUpdateDialogOpen}
         selectedItem={selectedItem}
         warehouses={warehouses}
-        onUpdateSuccess={onUpdateSuccess}
       />
     </div>
   );

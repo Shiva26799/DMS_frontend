@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Download, Filter, Calendar, TrendingUp, DollarSign } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -24,6 +24,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { Skeleton } from "../components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 
 const revenueData = [
@@ -70,6 +71,13 @@ const warrantyData = [
 ];
 
 export function Reports() {
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const [dateRange, setDateRange] = useState("6months");
 
   return (
@@ -107,54 +115,31 @@ export function Reports() {
 
       {/* Summary KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-blue-600" />
+        {[
+          { label: "Total Revenue", value: "₹156.4Cr", icon: DollarSign, trend: "+18.2%", color: "blue" },
+          { label: "Total Orders", value: "538", icon: TrendingUp, trend: "+12.5%", color: "green" },
+          { label: "Avg Order Value", value: "₹29.1L", icon: Calendar, trend: "+5.3%", color: "orange" },
+          { label: "Growth Rate", value: "18.2%", icon: TrendingUp, trend: "YoY Growth", color: "purple" }
+        ].map((kpi, i) => (
+          <Card key={i} className="p-4">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 bg-${kpi.color}-100 rounded-lg flex items-center justify-center`}>
+                <kpi.icon className={`w-5 h-5 text-${kpi.color}-600`} />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">{kpi.label}</p>
+                {isLoading ? (
+                  <Skeleton className="h-6 w-20 mt-1" />
+                ) : (
+                  <p className="text-xl font-bold text-gray-900">{kpi.value}</p>
+                )}
+                <p className={`text-xs ${kpi.trend.startsWith("+") ? "text-green-600" : "text-gray-600"}`}>
+                  {kpi.trend} {kpi.trend.includes("%") && !kpi.trend.includes("YoY") ? "vs last period" : ""}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Total Revenue</p>
-              <p className="text-xl font-bold text-gray-900">₹156.4Cr</p>
-              <p className="text-xs text-green-600">+18.2% vs last period</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Total Orders</p>
-              <p className="text-xl font-bold text-gray-900">538</p>
-              <p className="text-xs text-green-600">+12.5% vs last period</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-              <Calendar className="w-5 h-5 text-orange-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Avg Order Value</p>
-              <p className="text-xl font-bold text-gray-900">₹29.1L</p>
-              <p className="text-xs text-green-600">+5.3% vs last period</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Growth Rate</p>
-              <p className="text-xl font-bold text-gray-900">18.2%</p>
-              <p className="text-xs text-gray-600">YoY Growth</p>
-            </div>
-          </div>
-        </Card>
+          </Card>
+        ))}
       </div>
 
       <Tabs defaultValue="executive">
@@ -177,30 +162,34 @@ export function Reports() {
                 Export
               </Button>
             </div>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#2563eb"
-                  strokeWidth={3}
-                  name="Actual Revenue"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="target"
-                  stroke="#16a34a"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  name="Target"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {isLoading ? (
+              <Skeleton className="h-[300px] w-full" />
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={revenueData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#2563eb"
+                    strokeWidth={3}
+                    name="Actual Revenue"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="target"
+                    stroke="#16a34a"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    name="Target"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { Save, Upload, Building2, Users, Warehouse, Trash2, Edit, Plus, Loader2 } from "lucide-react";
+import { Skeleton } from "../components/ui/skeleton";
+
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -31,7 +33,20 @@ import {
 import { Textarea } from "../components/ui/textarea";
 import { StatusBadge } from "../components/StatusBadge";
 import { toast } from "sonner";
-import { apiClient } from "../api/client";
+import { 
+  useCompanyInfo, 
+  useUpdateCompanyInfo, 
+  useUpdateCompanyLogo,
+  useUsers,
+  useAddUser,
+  useUpdateUser,
+  useDeleteUser,
+  useSettingsWarehouses,
+  useAddWarehouse,
+  useUpdateWarehouse,
+  useDeleteWarehouse
+} from "../hooks/useSettings";
+import { useDealers } from "../hooks/useDealers";
 
 interface User {
   _id: string;
@@ -64,7 +79,19 @@ interface WarehouseData {
 }
 
 export function Settings() {
-  const [loading, setLoading] = useState(true);
+  const { data: companyData, isLoading: isCompanyLoading } = useCompanyInfo();
+  const { data: usersData = [], isLoading: isUsersLoading } = useUsers();
+  const { data: warehousesData = [], isLoading: isWarehousesLoading } = useSettingsWarehouses();
+  const { data: dealers = [], isLoading: isDealersLoading } = useDealers();
+
+  const updateCompanyMutation = useUpdateCompanyInfo();
+  const updateLogoMutation = useUpdateCompanyLogo();
+  const addUserMutation = useAddUser();
+  const updateUserMutation = useUpdateUser();
+  const deleteUserMutation = useDeleteUser();
+  const addWarehouseMutation = useAddWarehouse();
+  const updateWarehouseMutation = useUpdateWarehouse();
+  const deleteWarehouseMutation = useDeleteWarehouse();
 
   // Company Information State
   const [companyInfo, setCompanyInfo] = useState({
@@ -80,9 +107,17 @@ export function Settings() {
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
+  // Sync company info when data is fetched
+  useEffect(() => {
+    if (companyData) {
+      setCompanyInfo(companyData);
+      if (companyData.logoUrl) {
+        setLogoPreview(companyData.logoUrl);
+      }
+    }
+  }, [companyData]);
+
   // User Management State
-  const [users, setUsers] = useState<User[]>([]);
-  const [dealers, setDealers] = useState<Dealer[]>([]);
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userForm, setUserForm] = useState({
@@ -91,11 +126,9 @@ export function Settings() {
     phone: "",
     role: "",
     password: "",
-    dealerId: "",
   });
 
   // Warehouse Management State
-  const [warehouses, setWarehouses] = useState<WarehouseData[]>([]);
   const [isWarehouseDialogOpen, setIsWarehouseDialogOpen] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<WarehouseData | null>(null);
   const [warehouseForm, setWarehouseForm] = useState({
@@ -110,61 +143,26 @@ export function Settings() {
     status: "Active" as "Active" | "Inactive",
   });
 
-  useEffect(() => {
-    Promise.all([
-      apiClient.get("settings/company"),
-      apiClient.get("settings/users"),
-      apiClient.get("settings/warehouses"),
-      apiClient.get("dealers")
-    ])
-      .then(([companyRes, usersRes, warehousesRes, dealersRes]) => {
-        if (companyRes.data) {
-          setCompanyInfo(companyRes.data);
-          if (companyRes.data.logoUrl) {
-            setLogoPreview(companyRes.data.logoUrl);
-          }
-        }
-        if (usersRes.data) setUsers(usersRes.data);
-        if (warehousesRes.data) setWarehouses(warehousesRes.data);
-        if (dealersRes.data) setDealers(dealersRes.data);
-      })
-      .catch((err) => {
-        toast.error("Failed to load settings data");
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, []);
+  const loading = isCompanyLoading || isUsersLoading || isWarehousesLoading || isDealersLoading;
 
   // Company Information Handlers
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Show local preview immediately
       const reader = new FileReader();
       reader.onloadend = () => {
         setLogoPreview(reader.result as string);
       };
       reader.readAsDataURL(file);
 
-      // Upload to S3 via backend
-      try {
-        const formData = new FormData();
-        formData.append("logo", file);
-
-        const res = await apiClient.put("settings/company/logo", formData, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        });
-
-        toast.success("Logo uploaded successfully");
-        setCompanyInfo({ ...companyInfo, logoUrl: res.data.logoUrl });
-      } catch (error) {
-        toast.error("Failed to upload logo to server");
-        // Revert preview on failure
-        setLogoPreview(companyInfo.logoUrl || null);
-      }
+      const formData = new FormData();
+      formData.append("logo", file);
+      
+      updateLogoMutation.mutate(formData, {
+        onError: () => {
+          setLogoPreview(companyInfo.logoUrl || null);
+        }
+      });
     }
   };
 
@@ -172,12 +170,7 @@ export function Settings() {
     if (e) {
       e.preventDefault();
     }
-    try {
-      await apiClient.put("settings/company", companyInfo);
-      toast.success("Company information saved successfully");
-    } catch (error) {
-      toast.error("Failed to save company information");
-    }
+    updateCompanyMutation.mutate(companyInfo);
   };
 
   // User Management Handlers
@@ -190,7 +183,6 @@ export function Settings() {
         phone: user.phone,
         role: user.role,
         password: "", // Keep password empty when editing
-        dealerId: user.dealerId || "",
       });
     } else {
       setEditingUser(null);
@@ -200,50 +192,40 @@ export function Settings() {
         phone: "",
         role: "",
         password: "",
-        dealerId: "",
       });
     }
     setIsUserDialogOpen(true);
   };
 
   const handleSaveUser = async () => {
-    try {
-      if (editingUser) {
-        // Update existing user
-        const payload = { ...userForm };
-        if (!payload.dealerId) payload.dealerId = null as any; // Allow clearing dealerId
+    if (editingUser) {
+      const payload: any = { ...userForm };
 
-        const res = await apiClient.put(`settings/users/${editingUser._id}`, payload);
-        setUsers(users.map((u) => (u._id === editingUser._id ? res.data : u)));
-        toast.success("User updated successfully");
-      } else {
-        // Add new user
-        if (!userForm.password) {
-          toast.error("Password is required for new users");
-          return;
+      updateUserMutation.mutate({ id: editingUser._id, data: payload }, {
+        onSuccess: () => {
+          setIsUserDialogOpen(false);
+          setEditingUser(null);
         }
-
-        const payload: any = { ...userForm };
-        if (!payload.dealerId) delete payload.dealerId;
-
-        const res = await apiClient.post("settings/users", payload);
-        setUsers([...users, res.data]);
-        toast.success("User added successfully");
+      });
+    } else {
+      if (!userForm.password) {
+        toast.error("Password is required for new users");
+        return;
       }
-      setIsUserDialogOpen(false);
-      setEditingUser(null);
-    } catch (error) {
-      toast.error("Failed to save user");
+      const payload: any = { ...userForm };
+
+      addUserMutation.mutate(payload, {
+        onSuccess: () => {
+          setIsUserDialogOpen(false);
+          setEditingUser(null);
+        }
+      });
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
-    try {
-      await apiClient.delete(`settings/users/${userId}`);
-      setUsers(users.filter((u) => u._id !== userId));
-      toast.success("User deleted successfully");
-    } catch (error) {
-      toast.error("Failed to delete user");
+    if (window.confirm("Are you sure you want to delete this user?")) {
+      deleteUserMutation.mutate(userId);
     }
   };
 
@@ -280,32 +262,26 @@ export function Settings() {
   };
 
   const handleSaveWarehouse = async () => {
-    try {
-      if (editingWarehouse) {
-        // Update existing warehouse
-        const res = await apiClient.put(`settings/warehouses/${editingWarehouse._id}`, warehouseForm);
-        setWarehouses(warehouses.map((w) => (w._id === editingWarehouse._id ? res.data : w)));
-        toast.success("Warehouse updated successfully");
-      } else {
-        // Add new warehouse
-        const res = await apiClient.post("settings/warehouses", warehouseForm);
-        setWarehouses([...warehouses, res.data]);
-        toast.success("Warehouse added successfully");
-      }
-      setIsWarehouseDialogOpen(false);
-      setEditingWarehouse(null);
-    } catch (error) {
-      toast.error("Failed to save warehouse");
+    if (editingWarehouse) {
+      updateWarehouseMutation.mutate({ id: editingWarehouse._id, data: warehouseForm }, {
+        onSuccess: () => {
+          setIsWarehouseDialogOpen(false);
+          setEditingWarehouse(null);
+        }
+      });
+    } else {
+      addWarehouseMutation.mutate(warehouseForm, {
+        onSuccess: () => {
+          setIsWarehouseDialogOpen(false);
+          setEditingWarehouse(null);
+        }
+      });
     }
   };
 
   const handleDeleteWarehouse = async (warehouseId: string) => {
-    try {
-      await apiClient.delete(`settings/warehouses/${warehouseId}`);
-      setWarehouses(warehouses.filter((w) => w._id !== warehouseId));
-      toast.success("Warehouse deleted successfully");
-    } catch (error) {
-      toast.error("Failed to delete warehouse");
+    if (window.confirm("Are you sure you want to delete this warehouse?")) {
+      deleteWarehouseMutation.mutate(warehouseId);
     }
   };
 
@@ -395,118 +371,150 @@ export function Settings() {
                 {/* Company Name */}
                 <div className="md:col-span-2">
                   <Label htmlFor="name">Company Name</Label>
-                  <Input
-                    id="name"
-                    value={companyInfo.name}
-                    onChange={(e) =>
-                      setCompanyInfo({ ...companyInfo, name: e.target.value })
-                    }
-                    placeholder="Enter company name"
-                    className="mt-1"
-                  />
+                  {isCompanyLoading ? (
+                    <Skeleton className="h-10 w-full mt-1" />
+                  ) : (
+                    <Input
+                      id="name"
+                      value={companyInfo.name}
+                      onChange={(e) =>
+                        setCompanyInfo({ ...companyInfo, name: e.target.value })
+                      }
+                      placeholder="Enter company name"
+                      className="mt-1"
+                    />
+                  )}
                 </div>
+
 
 
                 {/* GSTIN */}
                 <div>
                   <Label htmlFor="gstin">GSTIN</Label>
-                  <Input
-                    id="gstin"
-                    value={companyInfo.gstin}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-                      if (value.length <= 15) {
-                        setCompanyInfo({ ...companyInfo, gstin: value });
-                      }
-                    }}
-                    placeholder="Enter 15-digit GSTIN"
-                    className="mt-1"
-                    maxLength={15}
-                  />
+                  {isCompanyLoading ? (
+                    <Skeleton className="h-10 w-full mt-1" />
+                  ) : (
+                    <Input
+                      id="gstin"
+                      value={companyInfo.gstin}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+                        if (value.length <= 15) {
+                          setCompanyInfo({ ...companyInfo, gstin: value });
+                        }
+                      }}
+                      placeholder="Enter 15-digit GSTIN"
+                      className="mt-1"
+                      maxLength={15}
+                    />
+                  )}
                 </div>
 
                 {/* PAN */}
                 <div>
                   <Label htmlFor="pan">PAN</Label>
-                  <Input
-                    id="pan"
-                    value={companyInfo.pan}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-                      if (value.length <= 10) {
-                        setCompanyInfo({ ...companyInfo, pan: value });
-                      }
-                    }}
-                    placeholder="Enter 10-digit PAN"
-                    className="mt-1"
-                    maxLength={10}
-                  />
+                  {isCompanyLoading ? (
+                    <Skeleton className="h-10 w-full mt-1" />
+                  ) : (
+                    <Input
+                      id="pan"
+                      value={companyInfo.pan}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+                        if (value.length <= 10) {
+                          setCompanyInfo({ ...companyInfo, pan: value });
+                        }
+                      }}
+                      placeholder="Enter 10-digit PAN"
+                      className="mt-1"
+                      maxLength={10}
+                    />
+                  )}
                 </div>
+
 
                 {/* Address */}
                 <div className="md:col-span-2">
                   <Label htmlFor="address">Address</Label>
-                  <Textarea
-                    id="address"
-                    value={companyInfo.address}
-                    onChange={(e) =>
-                      setCompanyInfo({ ...companyInfo, address: e.target.value })
-                    }
-                    placeholder="Enter company address"
-                    className="mt-1"
-                    rows={3}
-                  />
+                  {isCompanyLoading ? (
+                    <Skeleton className="h-24 w-full mt-1" />
+                  ) : (
+                    <Textarea
+                      id="address"
+                      value={companyInfo.address}
+                      onChange={(e) =>
+                        setCompanyInfo({ ...companyInfo, address: e.target.value })
+                      }
+                      placeholder="Enter company address"
+                      className="mt-1"
+                      rows={3}
+                    />
+                  )}
                 </div>
+
 
                 {/* Website */}
                 <div>
                   <Label htmlFor="website">Website</Label>
-                  <Input
-                    id="website"
-                    type="url"
-                    pattern="https?://.+"
-                    title="Include http:// or https://"
-                    value={companyInfo.website}
-                    onChange={(e) =>
-                      setCompanyInfo({ ...companyInfo, website: e.target.value })
-                    }
-                    placeholder="https://www.example.com"
-                    className="mt-1"
-                  />
+                  {isCompanyLoading ? (
+                    <Skeleton className="h-10 w-full mt-1" />
+                  ) : (
+                    <Input
+                      id="website"
+                      type="url"
+                      pattern="https?://.+"
+                      title="Include http:// or https://"
+                      value={companyInfo.website}
+                      onChange={(e) =>
+                        setCompanyInfo({ ...companyInfo, website: e.target.value })
+                      }
+                      placeholder="https://www.example.com"
+                      className="mt-1"
+                    />
+                  )}
                 </div>
 
                 {/* Contact */}
                 <div>
                   <Label htmlFor="contact">Contact Number</Label>
-                  <Input
-                    id="contact"
-                    type="tel"
-                    value={companyInfo.contact}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/[^0-9]/g, "");
-                      setCompanyInfo({ ...companyInfo, contact: value });
-                    }}
-                    placeholder="e.g. 9876543210"
-                    className="mt-1"
-                  />
+                  {isCompanyLoading ? (
+                    <Skeleton className="h-10 w-full mt-1" />
+                  ) : (
+                    <Input
+                      id="contact"
+                      type="tel"
+                      value={companyInfo.contact}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9]/g, "");
+                        setCompanyInfo({ ...companyInfo, contact: value });
+                      }}
+                      placeholder="e.g. 9876543210"
+                      className="mt-1"
+                    />
+                  )}
                 </div>
 
                 {/* Email */}
                 <div>
                   <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
-                    title="Enter a valid email address"
-                    value={companyInfo.email}
-                    onChange={(e) =>
-                      setCompanyInfo({ ...companyInfo, email: e.target.value })
-                    }
-                    placeholder="info@example.com"
-                    className="mt-1"
-                  />
+                  {isCompanyLoading ? (
+                    <Skeleton className="h-10 w-full mt-1" />
+                  ) : (
+                    <Input
+                      id="email"
+                      type="email"
+                      pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+                      title="Enter a valid email address"
+                      value={companyInfo.email}
+                      onChange={(e) =>
+                        setCompanyInfo({ ...companyInfo, email: e.target.value })
+                      }
+                      placeholder="info@example.com"
+                      className="mt-1"
+                    />
+                  )}
                 </div>
+
               </div>
             </form>
           </Card>
@@ -546,44 +554,65 @@ export function Settings() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
-                    <TableRow key={user._id}>
-                      <TableCell className="font-medium">{user.name}</TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>{user.phone}</TableCell>
-                      <TableCell>
-                        <span className="text-sm text-gray-600">{user.role}</span>
-                        {user.role === "Dealer" && user.dealerId && (
-                          <div className="text-xs text-blue-600">
-                            {dealers.find(d => d._id === user.dealerId)?.companyName || "Unknown Dealer"}
+                  {isUsersLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-28" /></TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Skeleton className="h-8 w-8" />
+                            <Skeleton className="h-8 w-8" />
                           </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-600">
-                        {user.lastLogin}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenUserDialog(user)}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteUser(user._id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    usersData.map((user: User) => (
+                      <TableRow key={user._id}>
+                        <TableCell className="font-medium">{user.name}</TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell>{user.phone}</TableCell>
+                        <TableCell>
+                          <span className="text-sm text-gray-600">{user.role}</span>
+                          {user.role === "Dealer" && user.dealerId && (
+                            <div className="text-xs text-blue-600">
+                              {dealers.find((d: any) => d._id === user.dealerId)?.companyName || "Unknown Dealer"}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-600">
+                          {user.lastLogin}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={deleteUserMutation.isPending}
+                              onClick={() => handleOpenUserDialog(user)}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={deleteUserMutation.isPending}
+                              onClick={() => handleDeleteUser(user._id)}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              {deleteUserMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
+
               </Table>
             </div>
           </Card>
@@ -611,74 +640,112 @@ export function Settings() {
             </div>
 
             <div className="grid grid-cols-1 gap-4">
-              {warehouses.map((warehouse) => (
-                <Card key={warehouse._id} className="p-5 hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <Warehouse className="w-5 h-5 text-blue-600" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">
-                            {warehouse.name}
-                          </h3>
-                          <StatusBadge status={warehouse.status} />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Warehouse Details */}
-                        <div>
-                          <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
-                            Location Details
-                          </h4>
-                          <div className="space-y-1 text-sm">
-                            <p className="text-gray-900">{warehouse.address}</p>
-                            <p className="text-gray-600">
-                              {warehouse.city}, {warehouse.state} - {warehouse.pincode}
-                            </p>
+              {isWarehousesLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i} className="p-5">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <Skeleton className="w-10 h-10 rounded-lg" />
+                          <div className="space-y-2">
+                            <Skeleton className="h-5 w-40" />
+                            <Skeleton className="h-4 w-20" />
                           </div>
                         </div>
-
-                        {/* Admin Details */}
-                        <div>
-                          <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
-                            Administrator
-                          </h4>
-                          <div className="space-y-1 text-sm">
-                            <p className="text-gray-900 font-medium">
-                              {warehouse.adminName}
-                            </p>
-                            <p className="text-gray-600">{warehouse.adminContact}</p>
-                            <p className="text-gray-600">{warehouse.adminEmail}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Skeleton className="h-3 w-24" />
+                            <Skeleton className="h-4 w-full" />
+                            <Skeleton className="h-4 w-3/4" />
+                          </div>
+                          <div className="space-y-2">
+                            <Skeleton className="h-3 w-24" />
+                            <Skeleton className="h-4 w-1/2" />
+                            <Skeleton className="h-4 w-3/4" />
+                            <Skeleton className="h-4 w-2/3" />
                           </div>
                         </div>
                       </div>
+                      <div className="flex items-center gap-2 ml-4">
+                        <Skeleton className="h-8 w-8" />
+                        <Skeleton className="h-8 w-8" />
+                      </div>
                     </div>
+                  </Card>
+                ))
+              ) : (
+                warehousesData.map((warehouse: WarehouseData) => (
+                  <Card key={warehouse._id} className="p-5 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <Warehouse className="w-5 h-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-900">
+                              {warehouse.name}
+                            </h3>
+                            <StatusBadge status={warehouse.status} />
+                          </div>
+                        </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 ml-4">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenWarehouseDialog(warehouse)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteWarehouse(warehouse._id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Warehouse Details */}
+                          <div>
+                            <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
+                              Location Details
+                            </h4>
+                            <div className="space-y-1 text-sm">
+                              <p className="text-gray-900">{warehouse.address}</p>
+                              <p className="text-gray-600">
+                                {warehouse.city}, {warehouse.state} - {warehouse.pincode}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Admin Details */}
+                          <div>
+                            <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
+                              Administrator
+                            </h4>
+                            <div className="space-y-1 text-sm">
+                              <p className="text-gray-900 font-medium">
+                                {warehouse.adminName}
+                              </p>
+                              <p className="text-gray-600">{warehouse.adminContact}</p>
+                              <p className="text-gray-600">{warehouse.adminEmail}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 ml-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={deleteWarehouseMutation.isPending}
+                          onClick={() => handleOpenWarehouseDialog(warehouse)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={deleteWarehouseMutation.isPending}
+                          onClick={() => handleDeleteWarehouse(warehouse._id)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          {deleteWarehouseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))
+              )}
             </div>
+
           </Card>
         </TabsContent>
       </Tabs>
@@ -757,29 +824,6 @@ export function Settings() {
               </Select>
             </div>
 
-            {userForm.role === "Dealer" && (
-              <div>
-                <Label htmlFor="user-dealer">Associate Dealer *</Label>
-                <Select
-                  value={userForm.dealerId}
-                  onValueChange={(value) =>
-                    setUserForm({ ...userForm, dealerId: value })
-                  }
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select dealer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dealers.map((dealer) => (
-                      <SelectItem key={dealer._id} value={dealer._id}>
-                        {dealer.companyName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
             <div>
               <Label htmlFor="user-password">
                 {editingUser ? "New Password (Leave blank to keep current)" : "Password *"}
@@ -811,8 +855,7 @@ export function Settings() {
                 !userForm.name ||
                 !userForm.email ||
                 !userForm.phone ||
-                !userForm.role ||
-                (userForm.role === "Dealer" && !userForm.dealerId)
+                !userForm.role
               }
             >
               {editingUser ? "Update User" : "Add User"}

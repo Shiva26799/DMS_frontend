@@ -103,9 +103,11 @@ export function Header() {
               </div>
               <div className="text-left hidden md:block">
                 <div className="text-sm font-medium text-gray-900">
-                  Admin User
+                  {useAuth().user?.name || "User"}
                 </div>
-                <div className="text-xs text-gray-500">Admin</div>
+                <div className="text-xs text-gray-500">
+                  {useAuth().user?.role || "Role"}
+                </div>
               </div>
               <ChevronDown className="w-4 h-4 text-gray-500" />
             </button>

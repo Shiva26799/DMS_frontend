@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { Plus, Filter, LayoutGrid, List, Search, Loader2 } from "lucide-react";
+import { Plus, Filter, LayoutGrid, List, Search, Loader2, Trash2 } from "lucide-react";
+import { Skeleton } from "../components/ui/skeleton";
 import { Button } from "../components/ui/button";
+
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
 import {
@@ -22,9 +24,20 @@ import {
 } from "../components/ui/dialog";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
-import { apiClient } from "../api/client";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import { formatCurrency } from "../utils/currency";
+import { useLeads, useAddLead, useDeleteLead } from "../hooks/useLeads";
+import { useDebounce } from "../hooks/useDebounce";
 
 export interface Lead {
   _id: string;
@@ -36,10 +49,15 @@ export interface Lead {
   region: string;
   value: number;
   status: string;
+  inquiryType: "Walk-in" | "Field" | "Campaign" | "Digital";
+  lossReason?: string;
+  lossNotes?: string;
   assignedTo?: string;
   assignedDate: string;
   notes?: string;
   dealer?: string;
+  followUps?: any[];
+  createdAt: string;
 }
 
 export function LeadManagement() {
@@ -48,8 +66,12 @@ export function LeadManagement() {
   const [filterSource, setFilterSource] = useState<string>("all");
   const [filterRegion, setFilterRegion] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
+
+  const { data: leads = [], isLoading: isLeadsLoading } = useLeads();
+  const addLeadMutation = useAddLead();
+  const deleteLeadMutation = useDeleteLead();
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [leadForm, setLeadForm] = useState({
     customerName: "",
@@ -59,57 +81,44 @@ export function LeadManagement() {
     source: "Web" as "Web" | "Dealer",
     region: "",
     value: 0,
+    inquiryType: "Walk-in" as "Walk-in" | "Field" | "Campaign" | "Digital",
     notes: "",
   });
-
-  useEffect(() => {
-    fetchLeads();
-  }, []);
-
-  const fetchLeads = async () => {
-    try {
-      const res = await apiClient.get("leads");
-      setLeads(res.data);
-    } catch (error) {
-      toast.error("Failed to fetch leads");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
 
   const handleCreateLead = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const res = await apiClient.post("leads", {
-        ...leadForm,
-        status: "New",
-        assignedDate: new Date().toISOString().split("T")[0],
-      });
-      setLeads([res.data, ...leads]);
-      setIsDialogOpen(false);
-      setLeadForm({
-        customerName: "",
-        phone: "",
-        email: "",
-        product: "",
-        source: "Web",
-        region: "",
-        value: 0,
-        notes: "",
-      });
-      toast.success("Lead created successfully");
-    } catch (error) {
-      toast.error("Failed to create lead");
-    }
+    if (addLeadMutation.isPending) return;
+
+    addLeadMutation.mutate({
+      ...leadForm,
+      status: "New",
+      assignedDate: new Date().toISOString().split("T")[0],
+    }, {
+      onSuccess: () => {
+        setIsDialogOpen(false);
+        setLeadForm({
+          customerName: "",
+          phone: "",
+          email: "",
+          product: "",
+          source: "Web",
+          region: "",
+          value: 0,
+          inquiryType: "Walk-in",
+          notes: "",
+        });
+      }
+    });
   };
 
-  const filteredLeads = leads.filter((lead) => {
+  const filteredLeads = leads.filter((lead: Lead) => {
     const matchesStatus = filterStatus === "all" || lead.status.toLowerCase() === filterStatus;
     const matchesSource = filterSource === "all" || lead.source.toLowerCase() === filterSource;
     const matchesRegion = filterRegion === "all" || lead.region === filterRegion;
     const matchesSearch =
-      lead.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.product.toLowerCase().includes(searchQuery.toLowerCase());
+      lead.customerName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      lead.product.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
     return matchesStatus && matchesSource && matchesRegion && matchesSearch;
   });
 
@@ -122,7 +131,7 @@ export function LeadManagement() {
     Lost: [],
   };
 
-  filteredLeads.forEach((lead) => {
+  filteredLeads.forEach((lead: Lead) => {
     leadsByStatus[lead.status].push(lead);
   });
 
@@ -145,11 +154,7 @@ export function LeadManagement() {
         </Button>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
-      ) : (
+
         <>
 
 
@@ -252,53 +257,109 @@ export function LeadManagement() {
                         Status
                       </th>
                       <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                        Next Follow-up
+                      </th>
+                      <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                         Date
+                      </th>
+                      <th className="text-right text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                        Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredLeads.map((lead) => (
-                      <tr
-                        key={lead._id}
-                        className="hover:bg-gray-50 cursor-pointer"
-                      >
-                        <td className="px-6 py-4">
-                          <Link to={`/leads/${lead._id}`} className="block hover:opacity-75 transition-opacity">
-                            <p className="text-sm font-medium text-blue-600">
-                              {lead.customerName}
-                            </p>
-                            <p className="text-xs text-gray-500">{lead.phone}</p>
-                          </Link>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {lead.product}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span
-                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${lead.source === "Web"
-                              ? "bg-purple-100 text-purple-700"
-                              : "bg-blue-100 text-blue-700"
-                              }`}
-                          >
-                            {lead.source}
-                          </span>
-                        </td>
+                    {isLeadsLoading ? (
+                      Array.from({ length: 5 }).map((_, i) => (
+                        <tr key={i}>
+                          <td className="px-6 py-4">
+                            <div className="space-y-2">
+                              <Skeleton className="h-4 w-32" />
+                              <Skeleton className="h-3 w-20" />
+                            </div>
+                          </td>
+                          <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                          <td className="px-6 py-4"><Skeleton className="h-6 w-16 rounded-full" /></td>
+                          <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                          <td className="px-6 py-4"><Skeleton className="h-4 w-16" /></td>
+                          <td className="px-6 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
+                          <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                          <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                          <td className="px-6 py-4 text-right"><Skeleton className="h-8 w-8 ml-auto" /></td>
+                        </tr>
+                      ))
+                    ) : (
+                      filteredLeads.map((lead: Lead) => (
+                        <tr
+                          key={lead._id}
+                          className="hover:bg-gray-50 cursor-pointer"
+                        >
+                          <td className="px-6 py-4">
+                            <Link to={`/leads/${lead._id}`} className="block hover:opacity-75 transition-opacity">
+                              <p className="text-sm font-medium text-blue-600">
+                                {lead.customerName}
+                              </p>
+                              <p className="text-xs text-gray-500">{lead.phone}</p>
+                            </Link>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {lead.product}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${lead.source === "Web"
+                                ? "bg-purple-100 text-purple-700"
+                                : "bg-blue-100 text-blue-700"
+                                }`}
+                            >
+                              {lead.source}
+                            </span>
+                          </td>
 
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {lead.region}
-                        </td>
-                        <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                          {formatCurrency(lead.value)}
-                        </td>
-                        <td className="px-6 py-4">
-                          <StatusBadge status={lead.status} />
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {lead.assignedDate}
-                        </td>
-                      </tr>
-                    ))}
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {lead.region}
+                          </td>
+                          <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                            {formatCurrency(lead.value)}
+                          </td>
+                          <td className="px-6 py-4">
+                            <StatusBadge status={lead.status} />
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {(() => {
+                              const pendingFollowUps = lead.followUps?.filter((f: any) => f.status === "Pending") || [];
+                              if (pendingFollowUps.length === 0) return "—";
+                              const next = pendingFollowUps.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+                              const nextDate = new Date(next.date);
+                              const isOverdue = nextDate < new Date(new Date().setHours(0, 0, 0, 0));
+                              return (
+                                <span className={isOverdue ? "text-red-600 font-medium" : ""}>
+                                  {nextDate.toLocaleDateString("en-IN", { day: '2-digit', month: 'short' })}
+                                  {isOverdue && " ⚠️"}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {new Date(lead.createdAt).toLocaleDateString("en-IN")}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLeadToDelete(lead);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
+
                 </table>
               </div>
             </Card>
@@ -313,38 +374,71 @@ export function LeadManagement() {
                     </span>
                   </div>
                   <div className="space-y-3">
-                    {leads.map((lead) => (
-                      <Link key={lead._id} to={`/leads/${lead._id}`}>
-                        <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
-                          <p className="text-sm font-medium text-gray-900 mb-1">
-                            {lead.customerName}
-                          </p>
-                          <p className="text-xs text-gray-600 mb-2">
-                            {lead.product.split(" ")[1]}
-                          </p>
-                          <div className="flex items-center justify-between">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${lead.source === "Web"
-                                ? "bg-purple-100 text-purple-700"
-                                : "bg-blue-100 text-blue-700"
-                                }`}
-                            >
-                              {lead.source}
-                            </span>
-                            <span className="text-xs font-medium text-gray-900">
-                              {formatCurrency(lead.value)}
-                            </span>
+                    {isLeadsLoading ? (
+                      Array.from({ length: 3 }).map((_, i) => (
+                        <Card key={i} className="p-4">
+                          <div className="space-y-4">
+                            <div className="flex justify-between">
+                              <Skeleton className="h-4 w-24" />
+                              <Skeleton className="h-4 w-4" />
+                            </div>
+                            <Skeleton className="h-3 w-16" />
+                            <div className="flex justify-between">
+                              <Skeleton className="h-4 w-12 rounded" />
+                              <Skeleton className="h-4 w-12" />
+                            </div>
                           </div>
                         </Card>
-                      </Link>
-                    ))}
+                      ))
+                    ) : (
+                      leads.map((lead: Lead) => (
+                        <div key={lead._id} className="relative group">
+                          <Link key={lead._id} to={`/leads/${lead._id}`}>
+                            <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
+                              <div className="flex justify-between items-start mb-1">
+                                <p className="text-sm font-medium text-gray-900 truncate pr-4">
+                                  {lead.customerName}
+                                </p>
+                                <div onClick={(e) => e.preventDefault()}>
+                                  <button
+                                    className="p-1 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => setLeadToDelete(lead)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                              <p className="text-xs text-gray-600 mb-2">
+                                {lead.product.split(" ")[1]}
+                              </p>
+                              <div className="flex items-center justify-between">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${lead.source === "Web"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : "bg-blue-100 text-blue-700"
+                                    }`}
+                                >
+                                  {lead.source}
+                                </span>
+                                <span className="text-xs font-medium text-gray-900">
+                                  {formatCurrency(lead.value)}
+                                </span>
+                              </div>
+                            </Card>
+                          </Link>
+                        </div>
+                      ))
+                    )}
                   </div>
+
                 </div>
               ))}
             </div>
           )}
         </>
-      )}
+
+
+
 
       {/* Add Lead Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -445,18 +539,37 @@ export function LeadManagement() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="value">Estimated Value (₹) *</Label>
-              <Input
-                id="value"
-                type="text"
-                required
-                value={leadForm.value || ""}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/[^0-9]/g, "");
-                  setLeadForm({ ...leadForm, value: val ? parseInt(val, 10) : 0 });
-                }}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="value">Estimated Value (₹) *</Label>
+                <Input
+                  id="value"
+                  type="text"
+                  required
+                  value={leadForm.value || ""}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, "");
+                    setLeadForm({ ...leadForm, value: val ? parseInt(val, 10) : 0 });
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="inquiryType">Inquiry Type *</Label>
+                <Select
+                  value={leadForm.inquiryType}
+                  onValueChange={(val: any) => setLeadForm({ ...leadForm, inquiryType: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Walk-in">Walk-in</SelectItem>
+                    <SelectItem value="Field">Field</SelectItem>
+                    <SelectItem value="Campaign">Campaign</SelectItem>
+                    <SelectItem value="Digital">Digital</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -472,13 +585,40 @@ export function LeadManagement() {
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+              <Button type="submit" disabled={addLeadMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
+                {addLeadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Create Lead
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!leadToDelete} onOpenChange={(open) => !open && setLeadToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the lead
+              for <span className="font-semibold text-gray-900">{leadToDelete?.customerName}</span> and remove their data from our servers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLeadMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => leadToDelete && deleteLeadMutation.mutate(leadToDelete._id, {
+                onSuccess: () => setLeadToDelete(null)
+              })}
+              disabled={deleteLeadMutation.isPending}
+            >
+              {deleteLeadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Delete Lead
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

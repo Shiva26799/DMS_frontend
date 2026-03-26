@@ -1,10 +1,10 @@
-import { useParams, Link } from "react-router";
+import { useParams, Link, useNavigate } from "react-router";
 import { useState, useEffect, useRef } from "react";
-import { ArrowLeft, Package, IndianRupee, Calendar, Wrench, Loader2, Plus, Image as ImageIcon, Pencil } from "lucide-react";
+import { ArrowLeft, Package, IndianRupee, Calendar, Wrench, Loader2, Plus, Image as ImageIcon, Pencil, Trash2, MapPin } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { apiClient } from "../api/client";
+import { Skeleton } from "../components/ui/skeleton";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -34,21 +34,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { useNavigate } from "react-router";
+import { useProductDetail, useWarehouses, useUpdateProduct, useDeleteProduct } from "../hooks/useProducts";
 
 export function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [product, setProduct] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  
+  const { data: product, isLoading: isProductLoading, error: productError } = useProductDetail(id);
+  const { data: warehouses = [], isLoading: isWarehousesLoading } = useWarehouses();
+  
+  const updateMutation = useUpdateProduct();
+  const deleteMutation = useDeleteProduct();
 
   // Edit modal state
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editLoading, setEditLoading] = useState(false);
   const [editForm, setEditForm] = useState({
     name: "", sku: "", partNumber: "", category: "", description: "", price: "", stockAvailable: "", warrantyPeriod: "", warehouseId: "", reorderLevel: "5"
   });
-  const [warehouses, setWarehouses] = useState<any[]>([]);
   const [editSpecs, setEditSpecs] = useState<{ key: string; value: string }[]>([]);
   const [newImageFile, setNewImageFile] = useState<File | null>(null);
   const [newImagePreview, setNewImagePreview] = useState<string | null>(null);
@@ -56,52 +58,38 @@ export function ProductDetail() {
 
   // Delete modal state
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
-    const fetchData = async () => {
-      try {
-        const [productRes, warehousesRes] = await Promise.all([
-          apiClient.get(`/products/${id}`),
-          apiClient.get('/warehouses')
-        ]);
-        setProduct(productRes.data);
-        setWarehouses(warehousesRes.data);
-      } catch (error) {
-        console.error("Failed to load data", error);
-      } finally {
-        setLoading(false);
+    if (product) {
+      setEditForm({
+        name: product.name || "",
+        sku: product.sku || "",
+        partNumber: product.partNumber || "",
+        category: product.category || "",
+        description: product.description || "",
+        price: String(product.price || "0"),
+        stockAvailable: String(product.stockAvailable || "0"),
+        warrantyPeriod: product.warrantyPeriod || "",
+        warehouseId: product.warehouseId?._id || product.warehouseId || "",
+        reorderLevel: String(product.reorderLevel || "5"),
+      });
+
+      if (product.specifications) {
+        const specsArr = Object.entries(product.specifications).map(([key, value]) => ({
+          key,
+          value: String(value)
+        }));
+        setEditSpecs(specsArr.length > 0 ? specsArr : [{ key: "", value: "" }]);
+      } else {
+        setEditSpecs([{ key: "", value: "" }]);
       }
-    };
-    fetchData();
-  }, [id]);
+    }
+  }, [product]);
 
   const openEditModal = () => {
-    if (!product) return;
-    setEditForm({
-      name: product.name || "",
-      sku: product.sku || "",
-      partNumber: product.partNumber || "",
-      category: product.category || "",
-      description: product.description || "",
-      price: String(product.price || ""),
-      stockAvailable: String(product.stockAvailable || ""),
-      warrantyPeriod: product.warrantyPeriod || "",
-      warehouseId: product.warehouseId?._id || "",
-      reorderLevel: String(product.reorderLevel || "5"),
-    });
-    let specsArr: { key: string; value: string }[] = [];
-    if (product.specifications) {
-      const entries = product.specifications instanceof Map
-        ? Array.from(product.specifications.entries())
-        : Object.entries(product.specifications);
-      specsArr = entries.map(([k, v]: any) => ({ key: k, value: String(v) }));
-    }
-    setEditSpecs(specsArr.length > 0 ? specsArr : [{ key: "", value: "" }]);
+    setIsEditOpen(true);
     setNewImageFile(null);
     setNewImagePreview(null);
-    setIsEditOpen(true);
   };
 
   const addEditSpecRow = () => setEditSpecs([...editSpecs, { key: "", value: "" }]);
@@ -124,70 +112,117 @@ export function ProductDetail() {
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setEditLoading(true);
-    try {
-      const fd = new FormData();
-      fd.append("name", editForm.name);
-      fd.append("sku", editForm.sku);
-      fd.append("partNumber", editForm.partNumber);
-      fd.append("category", editForm.category);
-      fd.append("description", editForm.description || "-");
-      fd.append("price", editForm.price);
-      fd.append("stockAvailable", editForm.stockAvailable);
-      fd.append("warrantyPeriod", editForm.warrantyPeriod);
-      fd.append("warehouseId", editForm.warehouseId);
-      fd.append("reorderLevel", editForm.reorderLevel);
+    if (updateMutation.isPending) return;
 
-      const specsObj: Record<string, string> = {};
-      editSpecs.forEach(({ key, value }) => { if (key.trim()) specsObj[key.trim()] = value.trim(); });
-      fd.append("specifications", JSON.stringify(specsObj));
+    const fd = new FormData();
+    fd.append("name", editForm.name);
+    fd.append("category", editForm.category);
+    if (editForm.sku) fd.append("sku", editForm.sku);
+    if (editForm.partNumber) fd.append("partNumber", editForm.partNumber);
+    fd.append("price", editForm.price);
+    fd.append("stockAvailable", editForm.stockAvailable);
+    fd.append("description", editForm.description);
+    fd.append("warrantyPeriod", editForm.warrantyPeriod);
+    fd.append("warehouseId", editForm.warehouseId);
+    fd.append("reorderLevel", editForm.reorderLevel);
 
-      if (newImageFile) fd.append("image", newImageFile);
+    const specsObj: Record<string, string> = {};
+    editSpecs.forEach(({ key, value }) => {
+      if (key.trim()) specsObj[key.trim()] = value.trim();
+    });
+    fd.append("specifications", JSON.stringify(specsObj));
 
-      const res = await apiClient.put(`/products/${id}`, fd, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
-      setProduct(res.data);
-      toast.success("Product updated successfully");
-      setIsEditOpen(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to update product");
-    } finally {
-      setEditLoading(false);
+    if (newImageFile) {
+      fd.append("image", newImageFile);
     }
+
+    updateMutation.mutate({ id: id!, data: fd }, {
+      onSuccess: () => {
+        setIsEditOpen(false);
+        setNewImageFile(null);
+        setNewImagePreview(null);
+      }
+    });
   };
 
-  const handleDeleteSubmit = async () => {
-    setDeleteLoading(true);
-    try {
-      await apiClient.delete(`/products/${id}`);
-      toast.success("Product deleted successfully");
-      setIsDeleteOpen(false);
-      navigate("/products");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to delete product");
-    } finally {
-      setDeleteLoading(false);
-    }
+  const handleDeleteSubmit = () => {
+    deleteMutation.mutate(id!, {
+      onSuccess: () => {
+        setIsDeleteOpen(false);
+        navigate("/products");
+      }
+    });
   };
+
+  const loading = isProductLoading || isWarehousesLoading;
+  const actionLoading = updateMutation.isPending || deleteMutation.isPending;
 
   if (loading) {
     return (
-      <div className="p-6 flex justify-center py-20">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-9 w-20" />
+            <div>
+              <Skeleton className="h-8 w-48 mb-2" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          </div>
+          <Skeleton className="h-6 w-24" />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <Card className="p-6">
+              <Skeleton className="h-96 w-full rounded-lg" />
+            </Card>
+            <Card className="p-6">
+              <Skeleton className="h-6 w-48 mb-4" />
+              <Skeleton className="h-4 w-full mb-2" />
+              <Skeleton className="h-4 w-full mb-2" />
+              <Skeleton className="h-4 w-2/3" />
+            </Card>
+            <Card className="p-6">
+              <Skeleton className="h-6 w-48 mb-4" />
+              <div className="grid grid-cols-2 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                ))}
+              </div>
+            </Card>
+          </div>
+          <div className="space-y-6">
+            <Card className="p-6">
+              <Skeleton className="h-6 w-40 mb-4" />
+              <div className="space-y-4">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="flex gap-3">
+                    <Skeleton className="h-5 w-5 rounded-full" />
+                    <div className="flex-1">
+                      <Skeleton className="h-3 w-20 mb-1" />
+                      <Skeleton className="h-5 w-32" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
       </div>
     );
   }
 
-  if (!product) {
+
+  if (productError || !product) {
     return (
       <div className="p-6">
-        <div className="text-center">
+        <Card className="p-12 text-center">
+          <Package className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900">Product not found</h2>
-          <Link to="/products" className="text-blue-600 hover:text-blue-700 mt-2 inline-block">
+          <Link to="/products" className="text-blue-600 hover:text-blue-700 mt-4 inline-block">
             Back to Products
           </Link>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -304,7 +339,7 @@ export function ProductDetail() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <Package className="w-5 h-5 text-gray-400 mt-0.5" />
+                <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
                 <div>
                   <p className="text-sm text-gray-600">Warehouse</p>
                   <p className="text-sm font-medium text-gray-900">{product.warehouseId?.name || "Unassigned"}</p>
@@ -338,6 +373,7 @@ export function ProductDetail() {
                 variant="outline"
                 onClick={() => setIsDeleteOpen(true)}
               >
+                <Trash2 className="w-4 h-4 mr-2" />
                 Delete Product
               </Button>
             </div>
@@ -439,7 +475,7 @@ export function ProductDetail() {
                   <Select value={editForm.warehouseId} onValueChange={(val) => setEditForm({ ...editForm, warehouseId: val })}>
                     <SelectTrigger><SelectValue placeholder="Select Warehouse" /></SelectTrigger>
                     <SelectContent>
-                      {warehouses.map(w => (
+                      {warehouses.map((w: any) => (
                         <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -480,8 +516,8 @@ export function ProductDetail() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={editLoading} className="bg-blue-600 hover:bg-blue-700">
-                {editLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Pencil className="w-4 h-4 mr-2" />}
+              <Button type="submit" disabled={actionLoading} className="bg-blue-600 hover:bg-blue-700">
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Pencil className="w-4 h-4 mr-2" />}
                 Save Changes
               </Button>
             </DialogFooter>
@@ -499,16 +535,16 @@ export function ProductDetail() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={actionLoading}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700 text-white"
               onClick={(e) => {
                 e.preventDefault();
                 handleDeleteSubmit();
               }}
-              disabled={deleteLoading}
+              disabled={actionLoading}
             >
-              {deleteLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Delete Product
             </AlertDialogAction>
           </AlertDialogFooter>

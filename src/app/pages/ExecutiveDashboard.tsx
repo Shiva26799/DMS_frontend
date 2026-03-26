@@ -23,6 +23,8 @@ import {
 import { StatusBadge } from "../components/StatusBadge";
 import { mockOrders, mockWarrantyClaims, mockInventory } from "../data/mockData";
 import { Link } from "react-router";
+import { Skeleton } from "../components/ui/skeleton";
+import { useState, useEffect } from "react";
 
 const salesData = [
   { month: "Aug", sales: 12.5, target: 15 },
@@ -41,15 +43,14 @@ const inventoryData = [
   { product: "Spare Parts", inStock: 230, reserved: 40 },
 ];
 
-const dealerPerformance = [
-  { dealer: "Maharashtra", score: 95 },
-  { dealer: "Punjab", score: 92 },
-  { dealer: "South India", score: 88 },
-  { dealer: "Haryana", score: 85 },
-  { dealer: "UP", score: 75 },
-];
-
 export function ExecutiveDashboard() {
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const recentOrders = mockOrders.slice(0, 5);
   const pendingClaims = mockWarrantyClaims.filter(
     (c) => c.status === "Submitted" || c.status === "Under Review"
@@ -69,41 +70,48 @@ export function ExecutiveDashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <KPICard
-          title="Monthly Orders"
-          value="24"
-          icon={ShoppingCart}
-          trend={{ value: "12%", positive: true }}
-          color="blue"
-        />
-        <KPICard
-          title="Pending Approvals"
-          value="8"
-          icon={Clock}
-          color="orange"
-        />
-        <KPICard
-          title="Inventory Value"
-          value="₹15.2Cr"
-          icon={Package}
-          trend={{ value: "5%", positive: true }}
-          color="green"
-        />
-        <KPICard
-          title="Dealer Performance"
-          value="87%"
-          icon={TrendingUp}
-          trend={{ value: "3%", positive: true }}
-          color="purple"
-        />
-        <KPICard
-          title="Open Warranty"
-          value="12"
-          icon={AlertCircle}
-          color="orange"
-        />
-        <KPICard title="Backorders" value="5" icon={CheckCircle} color="red" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {isLoading ? (
+          Array(4).fill(0).map((_, i) => (
+            <Card key={i} className="p-4 space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-8 w-16" />
+                <Skeleton className="h-8 w-8 rounded-full" />
+              </div>
+              <Skeleton className="h-3 w-12" />
+            </Card>
+          ))
+        ) : (
+          <>
+            <KPICard
+              title="Monthly Orders"
+              value="24"
+              icon={ShoppingCart}
+              trend={{ value: "12%", positive: true }}
+              color="blue"
+            />
+            <KPICard
+              title="Pending Approvals"
+              value="8"
+              icon={Clock}
+              color="orange"
+            />
+            <KPICard
+              title="Inventory Value"
+              value="₹15.2Cr"
+              icon={Package}
+              trend={{ value: "5%", positive: true }}
+              color="green"
+            />
+            <KPICard
+              title="Open Warranty"
+              value="12"
+              icon={AlertCircle}
+              color="orange"
+            />
+          </>
+        )}
       </div>
 
       {/* Charts Section */}
@@ -113,30 +121,34 @@ export function ExecutiveDashboard() {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Sales Trend (₹Cr)
           </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={salesData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="sales"
-                stroke="#2563eb"
-                strokeWidth={2}
-                name="Actual Sales"
-              />
-              <Line
-                type="monotone"
-                dataKey="target"
-                stroke="#16a34a"
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                name="Target"
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {isLoading ? (
+            <Skeleton className="h-[250px] w-full" />
+          ) : (
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={salesData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="sales"
+                  stroke="#2563eb"
+                  strokeWidth={2}
+                  name="Actual Sales"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="target"
+                  stroke="#16a34a"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  name="Target"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </Card>
 
         {/* Inventory Movement */}
@@ -144,35 +156,23 @@ export function ExecutiveDashboard() {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Inventory Status
           </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={inventoryData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="product" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="inStock" fill="#2563eb" name="In Stock" />
-              <Bar dataKey="reserved" fill="#f97316" name="Reserved" />
-            </BarChart>
-          </ResponsiveContainer>
+          {isLoading ? (
+            <Skeleton className="h-[250px] w-full" />
+          ) : (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={inventoryData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="product" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="inStock" fill="#2563eb" name="In Stock" />
+                <Bar dataKey="reserved" fill="#f97316" name="Reserved" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </Card>
       </div>
-
-      {/* Dealer Performance Chart */}
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Dealer Performance Score
-        </h3>
-        <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={dealerPerformance} layout="vertical">
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis type="number" domain={[0, 100]} />
-            <YAxis type="category" dataKey="dealer" />
-            <Tooltip />
-            <Bar dataKey="score" fill="#16a34a" name="Performance %" />
-          </BarChart>
-        </ResponsiveContainer>
-      </Card>
 
       {/* Bottom Section - Tables */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -190,28 +190,44 @@ export function ExecutiveDashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {recentOrders.map((order) => (
-              <div
-                key={order.id}
-                className="border border-gray-200 rounded-lg p-3"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {order.orderNumber}
-                    </p>
-                    <p className="text-xs text-gray-600">{order.dealer}</p>
+            {isLoading ? (
+              Array(5).fill(0).map((_, i) => (
+                <div key={i} className="border border-gray-100 rounded-lg p-3 space-y-2">
+                  <div className="flex justify-between">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
                   </div>
-                  <StatusBadge status={order.paymentStatus} />
+                  <Skeleton className="h-3 w-32" />
+                  <div className="flex justify-between pt-1">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-3 w-12" />
+                  </div>
                 </div>
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                  <span>{order.orderDate}</span>
-                  <span className="font-medium text-gray-900">
-                    ₹{(order.totalValue / 100000).toFixed(1)}L
-                  </span>
+              ))
+            ) : (
+              recentOrders.map((order) => (
+                <div
+                  key={order.id}
+                  className="border border-gray-200 rounded-lg p-3"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {order.orderNumber}
+                      </p>
+                      <p className="text-xs text-gray-600">{order.dealer}</p>
+                    </div>
+                    <StatusBadge status={order.paymentStatus} />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>{order.orderDate}</span>
+                    <span className="font-medium text-gray-900">
+                      ₹{(order.totalValue / 100000).toFixed(1)}L
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </Card>
 
@@ -229,25 +245,38 @@ export function ExecutiveDashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {pendingClaims.map((claim) => (
-              <div
-                key={claim.id}
-                className="border border-gray-200 rounded-lg p-3"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {claim.claimNumber}
-                    </p>
-                    <p className="text-xs text-gray-600">{claim.dealer}</p>
+            {isLoading ? (
+              Array(5).fill(0).map((_, i) => (
+                <div key={i} className="border border-gray-100 rounded-lg p-3 space-y-2">
+                  <div className="flex justify-between">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
                   </div>
-                  <StatusBadge status={claim.status} />
+                  <Skeleton className="h-3 w-32" />
+                  <Skeleton className="h-3 w-full" />
                 </div>
-                <p className="text-xs text-gray-500 line-clamp-2">
-                  {claim.issueDescription}
-                </p>
-              </div>
-            ))}
+              ))
+            ) : (
+              pendingClaims.map((claim) => (
+                <div
+                  key={claim.id}
+                  className="border border-gray-200 rounded-lg p-3"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {claim.claimNumber}
+                      </p>
+                      <p className="text-xs text-gray-600">{claim.dealer}</p>
+                    </div>
+                    <StatusBadge status={claim.status} />
+                  </div>
+                  <p className="text-xs text-gray-500 line-clamp-2">
+                    {claim.issueDescription}
+                  </p>
+                </div>
+              ))
+            )}
           </div>
         </Card>
 
@@ -265,28 +294,44 @@ export function ExecutiveDashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {lowStockItems.map((item) => (
-              <div
-                key={item.id}
-                className="border border-gray-200 rounded-lg p-3"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {item.sku}
-                    </p>
-                    <p className="text-xs text-gray-600">{item.locationName}</p>
+            {isLoading ? (
+              Array(5).fill(0).map((_, i) => (
+                <div key={i} className="border border-gray-100 rounded-lg p-3 space-y-2">
+                  <div className="flex justify-between">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
                   </div>
-                  <StatusBadge status={item.status} />
+                  <Skeleton className="h-3 w-32" />
+                  <div className="flex justify-between pt-1">
+                    <Skeleton className="h-3 w-12" />
+                    <Skeleton className="h-3 w-12" />
+                  </div>
                 </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-500">Available: {item.available}</span>
-                  <span className="text-red-600 font-medium">
-                    Reorder: {item.reorderLevel}
-                  </span>
+              ))
+            ) : (
+              lowStockItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="border border-gray-200 rounded-lg p-3"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {item.sku}
+                      </p>
+                      <p className="text-xs text-gray-600">{item.warehouseName}</p>
+                    </div>
+                    <StatusBadge status={item.status} />
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500">Available: {item.available}</span>
+                    <span className="text-red-600 font-medium">
+                      Reorder: {item.reorderLevel}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </Card>
       </div>
