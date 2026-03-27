@@ -4,7 +4,7 @@ import { Plus, Filter, Search } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
-import { mockOrders, mockDealers, mockProducts } from "../data/mockData";
+import { mockOrders, mockDealers, mockProducts, mockCustomers } from "../data/mockData";
 import { useDealers } from "../context/DealerContext";
 import { useOrders } from "../context/OrderContext";
 import {
@@ -45,16 +45,16 @@ export function OrderManagement() {
   // Form state for new order
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
-    dealerId: "",
+    customerId: "",
     productId: "",
     quantity: "1",
   });
 
   const handleCreateOrder = () => {
-    const selectedDealer = dealers.find((d) => d._id === formData.dealerId);
+    const selectedCustomer = mockCustomers.find((c) => c.id === formData.customerId);
     const selectedProduct = mockProducts.find((p) => p.id === formData.productId);
 
-    if (!selectedDealer || !selectedProduct) return;
+    if (!selectedCustomer || !selectedProduct) return;
 
     const quantity = Number(formData.quantity) || 1;
     const totalOrderValue = selectedProduct.price * quantity;
@@ -63,8 +63,8 @@ export function OrderManagement() {
       _id: `ORD${Date.now()}`,
       id: `ORD${Date.now()}`, // Keep both for safety across different mock formats
       orderNumber: `ORD-2026-${(orders.length + 1).toString().padStart(3, "0")}`,
-      dealer: selectedDealer.companyName,
-      dealerId: selectedDealer._id,
+      dealer: selectedCustomer.name,
+      dealerId: selectedCustomer.id,
       product: `${selectedProduct.name} (x${quantity})`,
       quantity: quantity,
       totalValue: totalOrderValue,
@@ -77,7 +77,7 @@ export function OrderManagement() {
 
     addOrder(newOrder);
     setFormData({
-      dealerId: "",
+      customerId: "",
       productId: "",
       quantity: "1",
     });
@@ -124,20 +124,20 @@ export function OrderManagement() {
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="dealer">Select Dealer</Label>
+                <Label htmlFor="customer">Select Customer</Label>
                 <Select
-                  value={formData.dealerId}
+                  value={formData.customerId}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, dealerId: value })
+                    setFormData({ ...formData, customerId: value })
                   }
                 >
-                  <SelectTrigger id="dealer">
-                    <SelectValue placeholder="Choose a dealer" />
+                  <SelectTrigger id="customer">
+                    <SelectValue placeholder="Choose a customer" />
                   </SelectTrigger>
                   <SelectContent>
-                    {dealers.map((d) => (
-                      <SelectItem key={d._id} value={d._id}>
-                        {d.companyName}
+                    {mockCustomers.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

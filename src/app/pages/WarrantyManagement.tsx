@@ -4,7 +4,7 @@ import { Plus, Filter, Search } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
-import { mockWarrantyClaims } from "../data/mockData";
+import { mockWarrantyClaims, mockCustomers } from "../data/mockData";
 import {
   Select,
   SelectContent,
@@ -27,6 +27,7 @@ import {
   DialogFooter,
 } from "../components/ui/dialog";
 import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
 
 export function WarrantyManagement() {
   const { dealers } = useDealers();
@@ -45,7 +46,7 @@ export function WarrantyManagement() {
   // Form state for new claim
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
-    dealerId: "",
+    customerId: "",
     productId: "",
     productSerial: "",
     issueDescription: "",
@@ -53,17 +54,17 @@ export function WarrantyManagement() {
   });
 
   const handleCreateClaim = () => {
-    const selectedDealer = dealers.find((d) => d._id === formData.dealerId);
+    const selectedCustomer = mockCustomers.find((c) => c.id === formData.customerId);
     const selectedProduct = mockProducts.find((p) => p.id === formData.productId);
 
-    if (!selectedDealer || !selectedProduct) return;
+    if (!selectedCustomer || !selectedProduct) return;
 
     const newClaim: any = {
       id: `WC${Date.now()}`,
       claimNumber: `WC-2026-${(claims.length + 1).toString().padStart(3, "0")}`,
       productSerial: formData.productSerial,
       productName: selectedProduct.name,
-      dealer: selectedDealer.companyName,
+      dealer: selectedCustomer.name,
       purchaseDate: formData.purchaseDate,
       issueDescription: formData.issueDescription,
       status: "Submitted" as const,
@@ -73,7 +74,7 @@ export function WarrantyManagement() {
 
     addClaim(newClaim);
     setFormData({
-      dealerId: "",
+      customerId: "",
       productId: "",
       productSerial: "",
       issueDescription: "",
@@ -122,20 +123,20 @@ export function WarrantyManagement() {
             </DialogHeader>
             <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
               <div className="grid gap-2">
-                <Label htmlFor="dealer">Select Dealer</Label>
+                <Label htmlFor="customer">Select Customer</Label>
                 <Select
-                  value={formData.dealerId}
+                  value={formData.customerId}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, dealerId: value })
+                    setFormData({ ...formData, customerId: value })
                   }
                 >
-                  <SelectTrigger id="dealer">
-                    <SelectValue placeholder="Choose a dealer" />
+                  <SelectTrigger id="customer">
+                    <SelectValue placeholder="Choose a customer" />
                   </SelectTrigger>
                   <SelectContent>
-                    {dealers.map((d) => (
-                      <SelectItem key={d._id} value={d._id}>
-                        {d.companyName}
+                    {mockCustomers.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -185,12 +186,11 @@ export function WarrantyManagement() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="issueDescription">Issue Description</Label>
-                <textarea
+                <Textarea
                   id="issueDescription"
-                  className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   placeholder="Describe the problem in detail..."
                   value={formData.issueDescription}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+                  onChange={(e) =>
                     setFormData({ ...formData, issueDescription: e.target.value })
                   }
                 />

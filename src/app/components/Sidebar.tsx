@@ -1,17 +1,5 @@
 import { Link, useLocation } from "react-router";
-import {
-  LayoutDashboard,
-  Users,
-  UserCheck,
-  Package,
-  Boxes,
-  ShoppingCart,
-  Shield,
-  Wrench,
-  BarChart3,
-  ChevronDown,
-  Settings as SettingsIcon,
-} from "lucide-react";
+import { LayoutDashboard, Users, UserCheck, Package, Boxes, ShoppingCart, Shield, Wrench, BarChart3, ChevronDown, Settings as SettingsIcon } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
@@ -26,6 +14,7 @@ interface NavItem {
 const navigation: NavItem[] = [
   { name: "Executive Dashboard", href: "/", icon: LayoutDashboard, allowedRoles: ["Admin", "Dealer"] },
   { name: "Lead Management", href: "/leads", icon: Users, allowedRoles: ["Admin", "Dealer"] },
+  { name: "Customer Management", href: "/customers", icon: Users, allowedRoles: ["Admin", "Dealer"] },
   { name: "Dealer Management", href: "/dealers", icon: UserCheck, allowedRoles: ["Admin"] },
   {
     name: "Products & Inventory",

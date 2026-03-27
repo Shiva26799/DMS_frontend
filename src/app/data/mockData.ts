@@ -29,6 +29,20 @@ export interface Lead {
   notes: string;
 }
 
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  region: string;
+  dealerName: string;
+  type: "Individual" | "Corporate";
+  totalPurchases: number;
+  totalSpent: number;
+  lastPurchaseDate: string;
+  status: "Active" | "Inactive";
+}
+
 export interface Dealer {
   _id: string;
   companyName: string;
@@ -185,6 +199,75 @@ export const mockLeads: Lead[] = [
     assignedDate: "2026-02-23",
     value: 1850000,
     notes: "Assigned to dealer for follow-up",
+  },
+];
+
+// Mock Customers
+export const mockCustomers: Customer[] = [
+  {
+    id: "C001",
+    name: "Rajesh Kumar",
+    phone: "+91 98765 43210",
+    email: "rajesh.kumar@email.com",
+    region: "Punjab",
+    dealerName: "Punjab Agro Solutions",
+    type: "Individual",
+    totalPurchases: 2,
+    totalSpent: 3700000,
+    lastPurchaseDate: "2026-02-20",
+    status: "Active",
+  },
+  {
+    id: "C002",
+    name: "Vikram Reddy",
+    phone: "+91 98765 43213",
+    email: "vikram.reddy@email.com",
+    region: "Andhra Pradesh",
+    dealerName: "South India Equipment",
+    type: "Individual",
+    totalPurchases: 1,
+    totalSpent: 2850000,
+    lastPurchaseDate: "2026-02-10",
+    status: "Active",
+  },
+  {
+    id: "C003",
+    name: "Suresh Patel",
+    phone: "+91 98765 43212",
+    email: "suresh.patel@email.com",
+    region: "Haryana",
+    dealerName: "Haryana Farm Tech",
+    type: "Individual",
+    totalPurchases: 0,
+    totalSpent: 0,
+    lastPurchaseDate: "N/A",
+    status: "Active",
+  },
+  {
+    id: "C004",
+    name: "Maharashtra Agro Solutions",
+    phone: "+91 98765 00005",
+    email: "contact@maharashtraagri.com",
+    region: "Maharashtra",
+    dealerName: "Maharashtra Agri Solutions",
+    type: "Corporate",
+    totalPurchases: 5,
+    totalSpent: 12500000,
+    lastPurchaseDate: "2026-03-15",
+    status: "Active",
+  },
+  {
+    id: "C005",
+    name: "Amit Singh",
+    phone: "+91 98765 43211",
+    email: "amit.singh@email.com",
+    region: "Punjab",
+    dealerName: "Punjab Agro Solutions",
+    type: "Individual",
+    totalPurchases: 1,
+    totalSpent: 2350000,
+    lastPurchaseDate: "2026-02-28",
+    status: "Active",
   },
 ];
 
