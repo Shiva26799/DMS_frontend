@@ -18,10 +18,8 @@ export const checkJWTToken = async (req, res, next) => {
         }
 
         const token = authHeader.split(" ")[1];
-
         // Read public key for RS256 verification
         const publicKey = fs.readFileSync(PUBLIC_KEY_PATH, "utf8");
-
         const decoded = jwt.verify(token, publicKey, { algorithms: ["RS256"] });
 
         // CRITICAL: Fetch the user from DB to ensure they still exist and have the correct role
@@ -39,12 +37,10 @@ export const checkJWTToken = async (req, res, next) => {
 };
 
 // Simple admin check for now, can be moved to authorize.js later as per Senior Pattern step 2
-export const adminOnly = (req, res, next) => {
-    if (req.user && req.user.role === "Admin") {
+export const superAdminOnly = (req, res, next) => {
+    if (req.user && req.user.role === "Super Admin") {
         next();
     } else {
-        res.status(403).json({ message: "Admin access required" });
+        res.status(403).json({ message: "Super Admin access required" });
     }
 };
-
-export { authorize } from "./authorize.middleware.js";

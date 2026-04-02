@@ -21,10 +21,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { StatusBadge } from "../components/StatusBadge";
-import { mockOrders, mockWarrantyClaims, mockInventory } from "../data/mockData";
+import { mockWarrantyClaims, mockInventory } from "../data/mockData";
 import { Link } from "react-router";
 import { Skeleton } from "../components/ui/skeleton";
 import { useState, useEffect } from "react";
+import { useOrders } from "../context/OrderContext";
 
 const salesData = [
   { month: "Aug", sales: 12.5, target: 15 },
@@ -46,12 +47,14 @@ const inventoryData = [
 export function ExecutiveDashboard() {
   const [isLoading, setIsLoading] = useState(true);
 
+  const { orders } = useOrders();
+
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1000);
     return () => clearTimeout(timer);
   }, []);
 
-  const recentOrders = mockOrders.slice(0, 5);
+  const recentOrders = orders.slice(0, 5);
   const pendingClaims = mockWarrantyClaims.filter(
     (c) => c.status === "Submitted" || c.status === "Under Review"
   );

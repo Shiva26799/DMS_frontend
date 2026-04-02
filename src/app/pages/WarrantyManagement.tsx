@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { Plus, Filter, Search } from "lucide-react";
+import { Plus, Filter, Search, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
-import { mockWarrantyClaims, mockCustomers } from "../data/mockData";
 import {
   Select,
   SelectContent,
@@ -17,7 +16,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { useDebounce } from "../hooks/useDebounce";
 import { useDealers } from "../context/DealerContext";
 import { useWarranty } from "../context/WarrantyContext";
-import { mockProducts } from "../data/mockData";
+import { useProducts } from "../hooks/useProducts";
 import {
   Dialog,
   DialogContent,
@@ -27,17 +26,12 @@ import {
   DialogFooter,
 } from "../components/ui/dialog";
 import { Label } from "../components/ui/label";
-import { Textarea } from "../components/ui/textarea";
 
 export function WarrantyManagement() {
   const { dealers } = useDealers();
-  const { claims, addClaim } = useWarranty();
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
+  const { data: productsData } = useProducts();
+  const products = productsData?.products || [];
+  const { claims, isLoading, createClaim, fetchClaims } = useWarranty();
 
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -45,50 +39,56 @@ export function WarrantyManagement() {
 
   // Form state for new claim
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    customerId: "",
+    dealerId: "",
     productId: "",
     productSerial: "",
     issueDescription: "",
-    purchaseDate: new Date().toISOString().split("T")[0],
   });
 
-  const handleCreateClaim = () => {
-    const selectedCustomer = mockCustomers.find((c) => c.id === formData.customerId);
-    const selectedProduct = mockProducts.find((p) => p.id === formData.productId);
+  useEffect(() => {
+    fetchClaims();
+  }, [fetchClaims]);
 
-    if (!selectedCustomer || !selectedProduct) return;
+  const handleCreateClaim = async () => {
+    if (!formData.dealerId || !formData.productId || !formData.productSerial || !formData.issueDescription) {
+      alert("Please fill in all required fields.");
+      return;
+    }
 
-    const newClaim: any = {
-      id: `WC${Date.now()}`,
-      claimNumber: `WC-2026-${(claims.length + 1).toString().padStart(3, "0")}`,
-      productSerial: formData.productSerial,
-      productName: selectedProduct.name,
-      dealer: selectedCustomer.name,
-      purchaseDate: formData.purchaseDate,
-      issueDescription: formData.issueDescription,
-      status: "Submitted" as const,
-      submittedDate: new Date().toISOString().split("T")[0],
-      warrantyValid: true,
-    };
-
-    addClaim(newClaim);
-    setFormData({
-      customerId: "",
-      productId: "",
-      productSerial: "",
-      issueDescription: "",
-      purchaseDate: new Date().toISOString().split("T")[0],
-    });
-    setIsDialogOpen(false);
+    try {
+      setIsSubmitting(true);
+      await createClaim({
+        dealerId: formData.dealerId,
+        productId: formData.productId,
+        machineSerialNumber: formData.productSerial,
+        issueDescription: formData.issueDescription
+      });
+      
+      setFormData({
+        dealerId: "",
+        productId: "",
+        productSerial: "",
+        issueDescription: "",
+      });
+      setIsDialogOpen(false);
+      alert("Warranty claim submitted successfully!");
+    } catch (error) {
+      console.error("Failed to create claim:", error);
+      alert("Failed to create claim. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredClaims = claims.filter((claim) => {
-    const matchesStatus = filterStatus === "all" || claim.status.toLowerCase().replace(/ /g, "-") === filterStatus;
+    const matchesStatus = filterStatus === "all" || claim.status === filterStatus;
     const matchesSearch =
       claim.claimNumber.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-      claim.productName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-      claim.dealer.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
+      claim.machineSerialNumber.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      claim.dealerId?.companyName?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      claim.productId?.name?.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
     return matchesStatus && matchesSearch;
   });
 
@@ -96,7 +96,23 @@ export function WarrantyManagement() {
   const openClaims = claims.filter(
     (c) => c.status !== "Closed" && c.status !== "Rejected"
   ).length;
-  const approvedClaims = claims.filter((c) => c.status === "Approved" || c.status === "Dispatch").length;
+  const approvedClaims = claims.filter((c) => 
+    ["Claim Approved", "Parts Processing", "Parts Dispatched", "Repair & Collection", "Closed"].includes(c.status)
+  ).length;
+
+  const STAGES = [
+    "Complaint Received",
+    "Technician Assigned",
+    "Initial Inspection",
+    "LOVOL Review",
+    "HO Review",
+    "Claim Approved",
+    "Parts Processing",
+    "Parts Dispatched",
+    "Repair & Collection",
+    "Closed",
+    "Rejected"
+  ];
 
   return (
     <div className="p-6 space-y-6">
@@ -107,7 +123,7 @@ export function WarrantyManagement() {
             Warranty Management
           </h1>
           <p className="text-sm text-gray-600 mt-1">
-            Track and manage warranty claims
+            Track and manage warranty claims lifecycle
           </p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -123,20 +139,20 @@ export function WarrantyManagement() {
             </DialogHeader>
             <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
               <div className="grid gap-2">
-                <Label htmlFor="customer">Select Customer</Label>
+                <Label htmlFor="dealer">Select Dealer</Label>
                 <Select
-                  value={formData.customerId}
+                  value={formData.dealerId}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, customerId: value })
+                    setFormData({ ...formData, dealerId: value })
                   }
                 >
-                  <SelectTrigger id="customer">
-                    <SelectValue placeholder="Choose a customer" />
+                  <SelectTrigger id="dealer">
+                    <SelectValue placeholder="Choose a dealer" />
                   </SelectTrigger>
                   <SelectContent>
-                    {mockCustomers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
+                    {dealers.map((d: any) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.companyName || d.name} ({d.code})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -154,8 +170,8 @@ export function WarrantyManagement() {
                     <SelectValue placeholder="Choose a product" />
                   </SelectTrigger>
                   <SelectContent>
-                    {mockProducts.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
+                    {products.map((p: any) => (
+                      <SelectItem key={p._id} value={p._id}>
                         {p.name}
                       </SelectItem>
                     ))}
@@ -163,32 +179,22 @@ export function WarrantyManagement() {
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="productSerial">Serial Number</Label>
+                <Label htmlFor="productSerial">Machine Serial Number</Label>
                 <Input
                   id="productSerial"
-                  placeholder="e.g. HP2000-2025-1234"
+                  placeholder="e.g. SN12345678"
                   value={formData.productSerial}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+                  onChange={(e) =>
                     setFormData({ ...formData, productSerial: e.target.value })
                   }
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="purchaseDate">Purchase Date</Label>
-                <Input
-                  id="purchaseDate"
-                  type="date"
-                  value={formData.purchaseDate}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-                    setFormData({ ...formData, purchaseDate: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="issueDescription">Issue Description</Label>
-                <Textarea
+                <Label htmlFor="issueDescription">Reason for Claim (Complaint)</Label>
+                <textarea
                   id="issueDescription"
-                  placeholder="Describe the problem in detail..."
+                  className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Describe the issue reported by the customer..."
                   value={formData.issueDescription}
                   onChange={(e) =>
                     setFormData({ ...formData, issueDescription: e.target.value })
@@ -201,8 +207,14 @@ export function WarrantyManagement() {
                 type="button"
                 className="bg-blue-600 hover:bg-blue-700"
                 onClick={handleCreateClaim}
+                disabled={isSubmitting}
               >
-                Submit Claim
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : "Submit Claim"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -226,7 +238,7 @@ export function WarrantyManagement() {
           )}
         </Card>
         <Card className="p-4">
-          <p className="text-sm text-gray-600">Approved</p>
+          <p className="text-sm text-gray-600">Approved/In-Process</p>
           {isLoading ? (
             <Skeleton className="h-8 w-16 mt-1" />
           ) : (
@@ -241,7 +253,7 @@ export function WarrantyManagement() {
             <Skeleton className="h-8 w-16 mt-1" />
           ) : (
             <p className="text-2xl font-bold text-gray-900 mt-1">
-              {((approvedClaims / totalClaims) * 100).toFixed(0)}%
+              {totalClaims > 0 ? ((approvedClaims / totalClaims) * 100).toFixed(0) : "0"}%
             </p>
           )}
         </Card>
@@ -254,7 +266,7 @@ export function WarrantyManagement() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                placeholder="Search claims..."
+                placeholder="Search by Claim #, Serial #, Dealer or Product..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -262,19 +274,15 @@ export function WarrantyManagement() {
             </div>
           </div>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[220px]">
               <Filter className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Status" />
+              <SelectValue placeholder="Filter by Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="submitted">Submitted</SelectItem>
-              <SelectItem value="under-review">Under Review</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="dispatch">Dispatch</SelectItem>
-              <SelectItem value="installed">Installed</SelectItem>
-              <SelectItem value="closed">Closed</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="all">All Lifecycle Stages</SelectItem>
+              {STAGES.map(stage => (
+                <SelectItem key={stage} value={stage}>{stage}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -290,7 +298,7 @@ export function WarrantyManagement() {
                   Claim Number
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
-                  Product
+                  Product Details
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                   Serial Number
@@ -299,16 +307,13 @@ export function WarrantyManagement() {
                   Dealer
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
-                  Issue
+                  Current Status
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
-                  Status
+                  Progress
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
-                  Warranty Valid
-                </th>
-                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
-                  Date
+                  Submitted On
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                   Actions
@@ -323,61 +328,56 @@ export function WarrantyManagement() {
                     <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
                     <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
                     <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
-                    <td className="px-6 py-4"><Skeleton className="h-10 w-48" /></td>
-                    <td className="px-6 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
-                    <td className="px-6 py-4"><Skeleton className="h-5 w-16 rounded" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-6 w-28 rounded-full" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-12" /></td>
                     <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
                     <td className="px-6 py-4"><Skeleton className="h-8 w-24" /></td>
                   </tr>
                 ))
-              ) : (
+              ) : filteredClaims.length > 0 ? (
                 filteredClaims.map((claim) => (
-                <tr key={claim.id} className="hover:bg-gray-50">
+                <tr key={claim._id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">
-                    <span className="text-sm font-medium text-blue-600">
+                    <span className="text-sm font-semibold text-blue-600">
                       {claim.claimNumber}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {claim.productName}
+                  <td className="px-6 py-4">
+                    <p className="text-sm font-medium text-gray-900">{claim.productId?.name || "N/A"}</p>
+                    <p className="text-xs text-gray-500">{claim.productId?.sku}</p>
                   </td>
                   <td className="px-6 py-4 text-sm font-mono text-gray-600">
-                    {claim.productSerial}
+                    {claim.machineSerialNumber}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {claim.dealer}
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="text-sm text-gray-600 line-clamp-2 max-w-xs">
-                      {claim.issueDescription}
-                    </p>
+                    {claim.dealerId?.companyName || "N/A"}
                   </td>
                   <td className="px-6 py-4">
                     <StatusBadge status={claim.status} />
                   </td>
                   <td className="px-6 py-4">
-                    {claim.warrantyValid ? (
-                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
-                        Valid
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-700">
-                        Expired
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                       <span className="text-xs font-medium text-blue-600">{claim.stageProgress}%</span>
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {claim.submittedDate}
+                    {new Date(claim.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4">
-                    <Link to={`/warranty/${claim.id}`}>
-                      <Button variant="outline" size="sm">
-                        View Details
+                    <Link to={`/warranty/${claim._id}`}>
+                      <Button variant="outline" size="sm" className="hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200">
+                        Process Claim
                       </Button>
                     </Link>
                   </td>
                 </tr>
-              )))}
+              ))) : (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center text-gray-500 bg-gray-50/50">
+                    No warranty claims found matching your criteria.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -1,5 +1,17 @@
 import { Link, useLocation } from "react-router";
-import { LayoutDashboard, Users, UserCheck, Package, Boxes, ShoppingCart, Shield, Wrench, BarChart3, ChevronDown, Settings as SettingsIcon } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  UserCheck,
+  Package,
+  Boxes,
+  ShoppingCart,
+  Shield,
+  Wrench,
+  BarChart3,
+  ChevronDown,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
@@ -12,30 +24,31 @@ interface NavItem {
 }
 
 const navigation: NavItem[] = [
-  { name: "Executive Dashboard", href: "/", icon: LayoutDashboard, allowedRoles: ["Admin", "Dealer"] },
-  { name: "Lead Management", href: "/leads", icon: Users, allowedRoles: ["Admin", "Dealer"] },
-  { name: "Customer Management", href: "/customers", icon: Users, allowedRoles: ["Admin", "Dealer"] },
-  { name: "Dealer Management", href: "/dealers", icon: UserCheck, allowedRoles: ["Admin"] },
+  { name: "Executive Dashboard", href: "/", icon: LayoutDashboard, allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
+  { name: "Lead Management", href: "/leads", icon: Users, allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
+  { name: "Dealer Management", href: "/dealers", icon: UserCheck, allowedRoles: ["Super Admin", "Distributor"] },
   {
     name: "Products & Inventory",
     icon: Package,
-    allowedRoles: ["Admin", "Dealer"],
+    allowedRoles: ["Super Admin", "Distributor", "Dealer"],
     submenu: [
-      { name: "Product Catalogue", href: "/products", allowedRoles: ["Admin", "Dealer"] },
-      { name: "Inventory", href: "/inventory", allowedRoles: ["Admin"] },
+      { name: "Product Catalogue", href: "/products", allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
+      { name: "Inventory", href: "/inventory", allowedRoles: ["Super Admin", "Distributor"] },
     ],
   },
-  { name: "Order Management", href: "/orders", icon: ShoppingCart, allowedRoles: ["Admin", "Dealer"] },
-  { name: "Warranty Management", href: "/warranty", icon: Shield, allowedRoles: ["Admin", "Dealer"] },
-  { name: "Maintenance", href: "/maintenance", icon: Wrench, allowedRoles: ["Admin", "Dealer"] },
-  { name: "Reports", href: "/reports", icon: BarChart3, allowedRoles: ["Admin"] },
-  { name: "Settings", href: "/settings", icon: SettingsIcon, allowedRoles: ["Admin"] },
+  { name: "Order Management", href: "/orders", icon: ShoppingCart, allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
+  { name: "Warranty Management", href: "/warranty", icon: Shield, allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
+  { name: "Maintenance", href: "/maintenance", icon: Wrench, allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
+  { name: "Reports", href: "/reports", icon: BarChart3, allowedRoles: ["Super Admin", "Distributor"] },
+  { name: "Settings", href: "/settings", icon: SettingsIcon, allowedRoles: ["Super Admin"] },
 ];
 
 export function Sidebar() {
   const location = useLocation();
-  const { user } = useAuth();
-  const role = user?.role;
+  const { user, role: contextRole } = useAuth();
+  
+  // Normalize role: treat "Admin" as "Super Admin" for backward compatibility
+  const role = contextRole === "Admin" ? "Super Admin" : contextRole;
 
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
     "Products & Inventory"
@@ -54,14 +67,21 @@ export function Sidebar() {
 
   // Filter top-level items
   const filteredNavigation = navigation
-    .filter((item) => !item.allowedRoles || item.allowedRoles.includes(role as string))
+    .filter((item) => {
+      // If no roles specified, it's public
+      if (!item.allowedRoles) return true;
+      // If role is missing, don't show any protected items
+      if (!role) return false;
+      // Show item if role matches
+      return item.allowedRoles.includes(role);
+    })
     .map((item) => {
       // If item has a submenu, filter that too
       if (item.submenu) {
         return {
           ...item,
           submenu: item.submenu.filter(
-            (sub) => !sub.allowedRoles || sub.allowedRoles.includes(role as string)
+            (sub) => !sub.allowedRoles || (role && sub.allowedRoles.includes(role))
           ),
         };
       }

@@ -15,7 +15,9 @@ interface AuthContextType {
     logout: () => void;
     loading: boolean;
     isAdmin: boolean;
+    isDistributor: boolean;
     isDealer: boolean;
+    role: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -38,7 +40,7 @@ const decodeToken = (token: string) => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
     const [user, setUser] = useState<User | null>(null);
-    
+
     // Immediate role flags from local decoding (Hybrid part 1)
     const [role, setRole] = useState<string | null>(() => {
         if (token) {
@@ -78,21 +80,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRole(null);
     };
 
-    const isAdmin = role === "Admin";
+    const isAdmin = role === "Super Admin" || role === "Admin";
+    const isDistributor = role === "Distributor";
     const isDealer = role === "Dealer";
 
     // A robust loading state: if we have a token but no user yet, and no error, we are still authenticating
     const isInitialLoading = !!token && !user && !isError;
 
     return (
-        <AuthContext.Provider value={{ 
-            user, 
-            token, 
-            login, 
-            logout, 
-            loading: isInitialLoading, 
+        <AuthContext.Provider value={{
+            user,
+            token,
+            login,
+            logout,
+            loading: isInitialLoading,
             isAdmin,
-            isDealer
+            isDistributor,
+            isDealer,
+            role
         }}>
             {children}
         </AuthContext.Provider>

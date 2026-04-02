@@ -10,6 +10,8 @@ import dealerRoutes from "./routes/dealer.routes.js";
 import settingsRoutes from "./routes/settings.routes.js";
 import productRoutes from "./routes/product.routes.js";
 import warehouseRoutes from "./routes/warehouse.routes.js";
+import orderRoutes from "./routes/order.routes.js";
+import warrantyRoutes from "./routes/warranty.routes.js";
 
 import path from "path";
 import { fileURLToPath } from "url";
@@ -35,23 +37,21 @@ app.use("/api/dealers", dealerRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/warehouses", warehouseRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/warranty", warrantyRoutes);
 
 // Database connection
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
 const MONGODB_URI = process.env.MONGODB_URI;
 
 mongoose
     .connect(MONGODB_URI)
     .then(() => {
         console.log("Connected to MongoDB");
-        if (process.env.NODE_ENV !== "production") {
-            app.listen(PORT, () => {
-                console.log(`Server is running on port ${PORT}`);
-            });
-        }
+        app.listen(PORT, () => {
+            console.log(`Server is running on port ${PORT}`);
+        });
     })
     .catch((err) => {
         console.error("MongoDB connection error:", err);
     });
-
-export default app;

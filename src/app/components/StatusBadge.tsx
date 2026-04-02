@@ -19,6 +19,7 @@ const statusConfig: Record<
 
   // Order statuses
   pending: { variant: "secondary", className: "bg-yellow-100 text-yellow-700 hover:bg-yellow-100" },
+  "pending-payment": { variant: "secondary", className: "bg-yellow-100 text-yellow-700 hover:bg-yellow-100" },
   approved: { variant: "secondary", className: "bg-green-100 text-green-700 hover:bg-green-100" },
   "in-progress": { variant: "default", className: "bg-blue-100 text-blue-700 hover:bg-blue-100" },
   completed: { variant: "secondary", className: "bg-green-100 text-green-700 hover:bg-green-100" },
@@ -48,6 +49,11 @@ const statusConfig: Record<
   active: { variant: "secondary", className: "bg-green-100 text-green-700 hover:bg-green-100" },
   inactive: { variant: "secondary", className: "bg-gray-100 text-gray-700 hover:bg-gray-100" },
   suspended: { variant: "destructive", className: "bg-red-100 text-red-700 hover:bg-red-100" },
+
+  // Rating statuses
+  "hot-🔥": { variant: "default", className: "bg-red-100 text-red-700 hover:bg-red-100 font-bold" },
+  "warm-🌤️": { variant: "secondary", className: "bg-yellow-100 text-yellow-700 hover:bg-yellow-100 font-bold" },
+  "cold-❄️": { variant: "secondary", className: "bg-blue-100 text-blue-700 hover:bg-blue-100 font-bold" },
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {
@@ -57,9 +63,11 @@ export function StatusBadge({ status }: StatusBadgeProps) {
     className: "bg-gray-100 text-gray-700 hover:bg-gray-100",
   };
 
+  const displayStatus = status === "Pending Payment" ? "Pending" : status;
+
   return (
     <Badge variant={config.variant} className={config.className}>
-      {status}
+      {displayStatus}
     </Badge>
   );
 }

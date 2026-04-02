@@ -2,19 +2,73 @@ import { Product } from "../models/product.model.js";
 
 export const getProducts = async (req, res) => {
     try {
-        const products = await Product.find().populate("warehouseId").sort({ createdAt: -1 });
-        res.json(products);
+        const { search, category, page = 1, limit = 20 } = req.query;
+        let query = {};
+
+        if (category && category !== "all") {
+            query.category = category;
+        }
+
+        if (search) {
+            query = {
+                $or: [
+                    { name: { $regex: search, $options: "i" } },
+                    { sku: { $regex: search, $options: "i" } },
+                    { partNumber: { $regex: search, $options: "i" } },
+                ],
+            };
+        }
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const [harvesterCount, sparePartCount] = await Promise.all([
+            Product.countDocuments({ ...query, category: "Harvester" }),
+            Product.countDocuments({ ...query, category: "Spare Part" })
+        ]);
+
+        // Inventory stats (for InventoryManagement page)
+        const allProducts = await Product.find(query);
+        const totalValue = allProducts.reduce((sum, item) => sum + (item.stockAvailable * (item.price || 0)), 0);
+        const lowStockCount = allProducts.filter(item => {
+            const reorderLevel = item.reorderLevel || 5;
+            return item.stockAvailable <= reorderLevel;
+        }).length;
+        
+        const total = await Product.countDocuments(query);
+
+        const products = await Product.find(query)
+            .populate("warehouseId")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        res.json({
+            products,
+            totalPages: Math.ceil(total / limit),
+            currentPage: parseInt(page),
+            totalProducts: total,
+            counts: {
+                total,
+                Harvester: harvesterCount,
+                "Spare Part": sparePartCount,
+                totalValue,
+                lowStockCount,
+                reorderSuggestions: allProducts.filter(item => {
+                    const reorderLevel = item.reorderLevel || 5;
+                    return item.stockAvailable <= reorderLevel;
+                })
+            }
+        });
     } catch (error) {
         console.error("Error fetching products:", error);
-        res.status(500).json({ message: "Failed to fetch products" });
+        res.status(500).json({ message: "Server error" });
     }
 };
 
 export const createProduct = async (req, res) => {
     try {
         const user = req.user;
-        if (user.role !== "Admin") {
-            return res.status(403).json({ message: "Only Admins can add products." });
+        if (user.role !== "Super Admin") {
+            return res.status(403).json({ message: "Only Super Admins can add products." });
         }
 
         const { name, sku, partNumber, category, description, price, stockAvailable, warrantyPeriod, specifications, warehouseId, reorderLevel } = req.body;
@@ -77,8 +131,8 @@ export const createProduct = async (req, res) => {
 export const bulkCreateProducts = async (req, res) => {
     try {
         const user = req.user;
-        if (user.role !== "Admin") {
-            return res.status(403).json({ message: "Only Admins can add products." });
+        if (user.role !== "Super Admin") {
+            return res.status(403).json({ message: "Only Super Admins can add products." });
         }
 
         const productsData = req.body;
@@ -169,8 +223,8 @@ export const updateProduct = async (req, res) => {
 export const deleteProduct = async (req, res) => {
     try {
         const user = req.user;
-        if (user.role !== "Admin") {
-            return res.status(403).json({ message: "Only Admins can delete products." });
+        if (user.role !== "Super Admin") {
+            return res.status(403).json({ message: "Only Super Admins can delete products." });
         }
 
         const product = await Product.findByIdAndDelete(req.params.id);

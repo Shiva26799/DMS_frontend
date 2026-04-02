@@ -96,8 +96,16 @@ export function LeadDetail() {
   const [followUpNote, setFollowUpNote] = useState("");
   const [lossReason, setLossReason] = useState("");
   const [lossNotes, setLossNotes] = useState("");
+  const [newRating, setNewRating] = useState("");
   const [note, setNote] = useState("");
   const [isStatusSelectOpen, setIsStatusSelectOpen] = useState(false);
+
+  const handleChangeRating = async () => {
+    if (!newRating || !id) return;
+    updateLeadMutation.mutate({ id, data: { rating: newRating } }, {
+      onSuccess: () => setActiveAction(null)
+    });
+  };
 
   const handleChangeStatus = async () => {
     if (!newStatus || !id) return;
@@ -311,7 +319,10 @@ export function LeadDetail() {
             <Trash2 className="w-4 h-4 mr-2" />
             Delete
           </Button>
-          <StatusBadge status={lead.status} />
+          <div className="flex gap-2">
+            <StatusBadge status={lead.rating} />
+            <StatusBadge status={lead.status} />
+          </div>
         </div>
       </div>
 
@@ -569,6 +580,17 @@ export function LeadDetail() {
                     <Calendar className="w-4 h-4 mr-2" />
                     Schedule Follow-up
                   </Button>
+                  <Button
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => {
+                      setNewRating(lead.rating);
+                      setActiveAction("rating" as any);
+                    }}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Change Rating
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -639,7 +661,7 @@ export function LeadDetail() {
                       >
                         <SelectTrigger><SelectValue placeholder="Select a dealer" /></SelectTrigger>
                         <SelectContent>
-                          {dealers.map((d: any) => (
+                          {dealers.filter((d: any) => d.status === "Approved").map((d: any) => (
                             <SelectItem key={d._id} value={d._id}>{d.companyName}</SelectItem>
                           ))}
                         </SelectContent>
@@ -686,6 +708,33 @@ export function LeadDetail() {
                           disabled={actionLoading || !followUpDate || !followUpNote}
                         >
                           {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Schedule"}
+                        </Button>
+                        <Button variant="ghost" className="flex-1" onClick={() => setActiveAction(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {(activeAction as any) === "rating" && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">New Rating</Label>
+                      <Select
+                        value={newRating}
+                        onValueChange={setNewRating}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Select rating" /></SelectTrigger>
+                        <SelectContent>
+                          {["Hot 🔥", "Warm 🌤️", "Cold ❄️"].map(r => (
+                            <SelectItem key={r} value={r}>{r}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          onClick={handleChangeRating}
+                          disabled={actionLoading || !newRating}
+                        >
+                          {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
                         </Button>
                         <Button variant="ghost" className="flex-1" onClick={() => setActiveAction(null)}>Cancel</Button>
                       </div>

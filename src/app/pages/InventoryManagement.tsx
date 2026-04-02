@@ -64,9 +64,9 @@ function UpdateStockDialog({
 
   const handleUpdateStock = async () => {
     if (!selectedItem) return;
-    
+
     const reorderLevel = updateForm.reorderLevel === "" ? 1 : Number(updateForm.reorderLevel);
-    
+
     updateMutation.mutate({
       id: selectedItem._id,
       data: {
@@ -206,9 +206,20 @@ export function InventoryManagement() {
   const [suggestionsPage, setSuggestionsPage] = useState(1);
   const suggestionsPerPage = 5;
 
-  const { data: inventory = [], isLoading: isInventoryLoading } = useProducts();
+  const { data, isLoading: isInventoryLoading } = useProducts({
+    page: currentPage,
+    limit: itemsPerPage,
+    search: debouncedSearchQuery,
+    category: filterCategory === "all" ? undefined : filterCategory,
+  });
+
+  const inventory = data?.products || [];
+  const totalProducts = data?.totalProducts || 0;
+  const totalPages = data?.totalPages || 0;
+  const counts = data?.counts || { total: 0, Harvester: 0, "Spare Part": 0, totalValue: 0, lowStockCount: 0, reorderSuggestions: [] };
+
   const { data: warehouses = [], isLoading: isWarehousesLoading } = useWarehouses();
-  
+
   const loading = isInventoryLoading || isWarehousesLoading;
 
   useEffect(() => {
@@ -223,45 +234,11 @@ export function InventoryManagement() {
     return "Normal";
   }, []);
 
-  const filteredInventory = useMemo(() => {
-    return inventory.filter((item: any) => {
-      const matchesWarehouse = filterWarehouse === "all" || item.warehouseId?._id === filterWarehouse;
-      const matchesCategory = filterCategory === "all" || item.category === filterCategory;
-
-      const status = getStatus(item);
-      const matchesStatus = filterStatus === "all" || status.toLowerCase() === filterStatus;
-
-      const matchesSearch =
-        item.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-        (item.sku && item.sku.toLowerCase().includes(debouncedSearchQuery.toLowerCase())) ||
-        (item.partNumber && item.partNumber.toLowerCase().includes(debouncedSearchQuery.toLowerCase()));
-
-      return matchesWarehouse && matchesCategory && matchesStatus && matchesSearch;
-    });
-  }, [inventory, filterWarehouse, filterCategory, filterStatus, debouncedSearchQuery, getStatus]);
-
-  const totalPages = Math.ceil(filteredInventory.length / itemsPerPage);
-  
-  const paginatedInventory = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredInventory.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredInventory, currentPage, itemsPerPage]);
-
-  const totalValue = useMemo(() => {
-    return inventory.reduce((sum: number, item: any) => {
-      return sum + (item.stockAvailable * (item.price || 0));
-    }, 0);
-  }, [inventory]);
-
-  const lowStockCount = useMemo(() => {
-    return inventory.filter(
-      (item: any) => getStatus(item) !== "Normal"
-    ).length;
-  }, [inventory, getStatus]);
-
-  const reorderSuggestions = useMemo(() => {
-    return inventory.filter((item: any) => getStatus(item) !== "Normal");
-  }, [inventory, getStatus]);
+  const filteredInventory = inventory;
+  const paginatedInventory = inventory;
+  const totalValue = counts.totalValue || 0;
+  const lowStockCount = counts.lowStockCount || 0;
+  const reorderSuggestions = counts.reorderSuggestions || [];
 
   const suggestionsTotalPages = Math.ceil(reorderSuggestions.length / suggestionsPerPage);
 
@@ -333,7 +310,7 @@ export function InventoryManagement() {
             Track and manage stock levels for your harvesters and spare parts
           </p>
         </div>
-        <Button 
+        <Button
           className="bg-blue-600 hover:bg-blue-700"
           onClick={handleExportReport}
         >
@@ -350,7 +327,7 @@ export function InventoryManagement() {
             <Skeleton className="h-8 w-16 mt-1" />
           ) : (
             <p className="text-2xl font-bold text-gray-900 mt-1">
-              {inventory.length}
+              {counts.total}
             </p>
           )}
         </Card>
@@ -556,54 +533,54 @@ export function InventoryManagement() {
           </table>
         </div>
 
-          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-500 whitespace-nowrap">Results per page:</span>
-                <Select
-                  value={itemsPerPage.toString()}
-                  onValueChange={(val) => setItemsPerPage(parseInt(val))}
-                >
-                  <SelectTrigger className="h-8 w-[70px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[10, 20, 50, 100].map((size) => (
-                      <SelectItem key={size} value={size.toString()}>
-                        {size}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="text-sm text-gray-500">
-                Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredInventory.length)}</span> of <span className="font-medium">{filteredInventory.length}</span> results
-              </div>
-            </div>
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+          <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
+              <span className="text-sm text-gray-500 whitespace-nowrap">Results per page:</span>
+              <Select
+                value={itemsPerPage.toString()}
+                onValueChange={(val) => setItemsPerPage(parseInt(val))}
               >
-                <ChevronLeft className="w-4 h-4 mr-1" />
-                Previous
-              </Button>
-              <div className="text-sm font-medium text-gray-700 px-2">
-                Page {currentPage} of {totalPages}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
+                <SelectTrigger className="h-8 w-[70px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 20, 50, 100].map((size) => (
+                    <SelectItem key={size} value={size.toString()}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="text-sm text-gray-500">
+              Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, totalProducts)}</span> of <span className="font-medium">{totalProducts}</span> results
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Previous
+            </Button>
+            <div className="text-sm font-medium text-gray-700 px-2">
+              Page {currentPage} of {totalPages}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
+        </div>
       </Card>
 
       {/* Reorder Suggestions */}

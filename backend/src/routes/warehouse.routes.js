@@ -1,10 +1,10 @@
 import express from "express";
-import { checkJWTToken, adminOnly } from "../middleware/index.js";
+import { checkJWTToken, superAdminOnly } from "../middleware/index.js";
 import { getWarehouses, createWarehouse } from "../controllers/warehouse.controller.js";
 
 const router = express.Router();
 
 router.get("/", checkJWTToken, getWarehouses);
-router.post("/", checkJWTToken, adminOnly, createWarehouse);
+router.post("/", checkJWTToken, superAdminOnly, createWarehouse);
 
 export default router;

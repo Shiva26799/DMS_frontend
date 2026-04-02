@@ -33,9 +33,9 @@ import {
 import { Textarea } from "../components/ui/textarea";
 import { StatusBadge } from "../components/StatusBadge";
 import { toast } from "sonner";
-import { 
-  useCompanyInfo, 
-  useUpdateCompanyInfo, 
+import {
+  useCompanyInfo,
+  useUpdateCompanyInfo,
   useUpdateCompanyLogo,
   useUsers,
   useAddUser,
@@ -157,7 +157,7 @@ export function Settings() {
 
       const formData = new FormData();
       formData.append("logo", file);
-      
+
       updateLogoMutation.mutate(formData, {
         onError: () => {
           setLogoPreview(companyInfo.logoUrl || null);
@@ -583,6 +583,11 @@ export function Settings() {
                               {dealers.find((d: any) => d._id === user.dealerId)?.companyName || "Unknown Dealer"}
                             </div>
                           )}
+                          {user.role === "Distributor" && (
+                            <div className="text-xs text-blue-600">
+                              Region-based permissions
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-sm text-gray-600">
                           {user.lastLogin}
@@ -817,9 +822,9 @@ export function Settings() {
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Admin">Admin</SelectItem>
+                  <SelectItem value="Super Admin">Super Admin</SelectItem>
+                  <SelectItem value="Distributor">Distributor</SelectItem>
                   <SelectItem value="Dealer">Dealer</SelectItem>
-                  <SelectItem value="Warehouse Manager">Warehouse Manager</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -6,7 +6,10 @@ export const getLeads = async (req, res) => {
         const user = req.user;
         let query = {};
 
-        if (user.role === "Dealer" && user.dealerId) {
+        if (user.role === "Dealer") {
+            if (!user.dealerId) {
+                return res.status(403).json({ message: "Dealer account is missing dealerId linkage." });
+            }
             query = { dealerId: user.dealerId };
         }
 
@@ -32,7 +35,6 @@ export const createLead = async (req, res) => {
 
         if (user.role === "Dealer") {
             leadData.source = "Dealer";
-            leadData.status = "Assigned";
             if (user.dealerId) {
                 leadData.dealerId = user.dealerId;
             }
@@ -62,7 +64,7 @@ export const getLeadById = async (req, res) => {
         const lead = await Lead.findById(req.params.id);
         if (!lead) return res.status(404).json({ message: "Lead not found" });
 
-        if (user.role === "Dealer" && user.dealerId && String(lead.dealerId) !== String(user.dealerId)) {
+        if (user.role === "Dealer" && String(lead.dealerId) !== String(user.dealerId)) {
             return res.status(403).json({ message: "Unauthorized access to this lead" });
         }
 
@@ -76,16 +78,30 @@ export const updateLead = async (req, res) => {
     try {
         const user = req.user;
 
-        if (user.role === "Dealer") {
-            const existingLead = await Lead.findById(req.params.id);
-            if (!existingLead || (user.dealerId && String(existingLead.dealerId) !== String(user.dealerId))) {
-                return res.status(403).json({ message: "Unauthorized edit attempt" });
-            }
-            delete req.body.dealerId;
+        const existingLead = await Lead.findById(req.params.id);
+        if (!existingLead) return res.status(404).json({ message: "Lead not found" });
+
+        if (user.role === "Dealer" && String(existingLead.dealerId) !== String(user.dealerId)) {
+            return res.status(403).json({ message: "Unauthorized edit attempt" });
         }
 
-        const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after' });
-        if (!lead) return res.status(404).json({ message: "Lead not found" });
+        const updateData = { ...req.body };
+        if (user.role === "Dealer") {
+            delete updateData.dealerId;
+        }
+
+        // Log rating change if it exists
+        if (updateData.rating && updateData.rating !== existingLead.rating) {
+            if (!updateData.$push) updateData.$push = {};
+            updateData.$push.activityLog = {
+                action: "Rating Changed",
+                note: `Rating updated to: ${updateData.rating}`,
+                performedBy: user.name || user.role,
+                timestamp: new Date(),
+            };
+        }
+
+        const lead = await Lead.findByIdAndUpdate(req.params.id, updateData, { returnDocument: 'after' });
         res.json(lead);
     } catch (error) {
         res.status(400).json({ message: "Failed to update lead", error });
@@ -95,8 +111,8 @@ export const updateLead = async (req, res) => {
 export const assignLead = async (req, res) => {
     try {
         const user = req.user;
-        if (user.role !== "Admin") {
-            return res.status(403).json({ message: "Only Admins can assign leads." });
+        if (user.role !== "Super Admin") {
+            return res.status(403).json({ message: "Only Super Admins can assign leads." });
         }
 
         const { dealerId, dealerName } = req.body;
@@ -113,7 +129,7 @@ export const assignLead = async (req, res) => {
                     activityLog: {
                         action: "Lead Assigned",
                         note: `Assigned to dealer: ${dealerName || dealerId}`,
-                        performedBy: user.name || "Admin",
+                        performedBy: user.name || "Super Admin",
                         timestamp: new Date(),
                     }
                 }
@@ -153,7 +169,7 @@ export const updateLeadStatus = async (req, res) => {
 
         if (user.role === "Dealer") {
             const existingLead = await Lead.findById(req.params.id);
-            if (!existingLead || (user.dealerId && String(existingLead.dealerId) !== String(user.dealerId))) {
+            if (!existingLead || String(existingLead.dealerId) !== String(user.dealerId)) {
                 return res.status(403).json({ message: "Unauthorized" });
             }
         }
@@ -295,7 +311,7 @@ export const deleteLead = async (req, res) => {
         const lead = await Lead.findById(req.params.id);
         if (!lead) return res.status(404).json({ message: "Lead not found" });
 
-        if (user.role === "Dealer" && user.dealerId && String(lead.dealerId) !== String(user.dealerId)) {
+        if (user.role === "Dealer" && String(lead.dealerId) !== String(user.dealerId)) {
             return res.status(403).json({ message: "Unauthorized deletion attempt" });
         }
 

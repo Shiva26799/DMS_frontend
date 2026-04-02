@@ -29,40 +29,28 @@ export interface Lead {
   notes: string;
 }
 
-export interface Customer {
+export interface Dealer {
   id: string;
   name: string;
-  phone: string;
-  email: string;
-  region: string;
-  dealerName: string;
-  type: "Individual" | "Corporate";
-  totalPurchases: number;
-  totalSpent: number;
-  lastPurchaseDate: string;
-  status: "Active" | "Inactive";
-}
-
-export interface Dealer {
-  _id: string;
-  companyName: string;
-  ownerName: string;
   code: string;
   region: string;
   city: string;
-  address: string;
-  pincode: string;
-  contact: string;
+  contactPerson: string;
+  phone: string;
   email: string;
-  gstin?: string;
-  pan?: string;
   creditLimit: number;
   outstandingAmount: number;
   performance: number;
-  status: "Pending" | "Approved" | "Rejected";
+  performanceScore?: number;
+  companyName?: string;
+  ownerName?: string;
+  address?: string;
+  status: "Pending" | "Approved" | "Active" | "Inactive" | "Suspended" | "Rejected";
   joinedDate: string;
   totalOrders: number;
   totalRevenue: number;
+  distributorId?: string;
+  distributorName?: string;
 }
 
 export interface Product {
@@ -76,7 +64,8 @@ export interface Product {
   serviceSchedule: string;
   stockAvailable: number;
   description: string;
-  specifications: Record<string, string>;
+  specifications: Record<string, any>;
+  partNumber?: string;
 }
 
 export interface InventoryItem {
@@ -94,17 +83,65 @@ export interface InventoryItem {
 
 export interface Order {
   id: string;
+  _id?: string;
   orderNumber: string;
   dealer: string;
   dealerId: string;
   product: string;
+  productId: string;
   quantity: number;
+  products?: Array<{
+    productId: any;
+    quantity: number;
+    price: number;
+    name?: string;
+    sku?: string;
+  }>;
   totalValue: number;
   orderDate: string;
   paymentStatus: "Paid" | "Unpaid" | "Partial" | "Pending";
   deliveryStatus: string;
   currentStage: string;
   stageProgress: number;
+  poDocument?: {
+    url: string;
+    uploadedAt: string;
+  };
+  paymentDocument?: {
+    url: string;
+    uploadedAt: string;
+  };
+  lovolInvoiceDocument?: {
+    url: string;
+    uploadedAt: string;
+  };
+  dealerInvoiceDocument?: {
+    url: string;
+    uploadedAt: string;
+  };
+  deliveryDetails?: {
+    transportName?: string;
+    trackingId?: string;
+    estimatedDeliveryDate?: string;
+  };
+  warrantyDetails?: {
+    machineSerialNumber?: string;
+    engineNumber?: string;
+    warrantyStartDate?: string;
+    warrantyEndDate?: string;
+    warrantyMonths?: number;
+    maintenanceMonths?: number;
+    warrantyDocument?: {
+      url: string;
+      uploadedAt: string;
+    };
+  };
+  activityLog?: Array<{
+    action: string;
+    note: string;
+    performedBy: string;
+    timestamp: string;
+  }>;
 }
 
 export interface WarrantyClaim {
@@ -124,7 +161,6 @@ export interface MaintenanceRecord {
   id: string;
   productSerial: string;
   productName: string;
-  customerName: string;
   dealer: string;
   serviceType: "3-Month" | "6-Month" | "500-Hour" | "1000-Hour";
   dueDate: string;
@@ -203,178 +239,89 @@ export const mockLeads: Lead[] = [
   },
 ];
 
-// Mock Customers
-export const mockCustomers: Customer[] = [
-  {
-    id: "C001",
-    name: "Rajesh Kumar",
-    phone: "+91 98765 43210",
-    email: "rajesh.kumar@email.com",
-    region: "Punjab",
-    dealerName: "Punjab Agro Solutions",
-    type: "Individual",
-    totalPurchases: 2,
-    totalSpent: 3700000,
-    lastPurchaseDate: "2026-02-20",
-    status: "Active",
-  },
-  {
-    id: "C002",
-    name: "Vikram Reddy",
-    phone: "+91 98765 43213",
-    email: "vikram.reddy@email.com",
-    region: "Andhra Pradesh",
-    dealerName: "South India Equipment",
-    type: "Individual",
-    totalPurchases: 1,
-    totalSpent: 2850000,
-    lastPurchaseDate: "2026-02-10",
-    status: "Active",
-  },
-  {
-    id: "C003",
-    name: "Suresh Patel",
-    phone: "+91 98765 43212",
-    email: "suresh.patel@email.com",
-    region: "Haryana",
-    dealerName: "Haryana Farm Tech",
-    type: "Individual",
-    totalPurchases: 0,
-    totalSpent: 0,
-    lastPurchaseDate: "N/A",
-    status: "Active",
-  },
-  {
-    id: "C004",
-    name: "Maharashtra Agro Solutions",
-    phone: "+91 98765 00005",
-    email: "contact@maharashtraagri.com",
-    region: "Maharashtra",
-    dealerName: "Maharashtra Agri Solutions",
-    type: "Corporate",
-    totalPurchases: 5,
-    totalSpent: 12500000,
-    lastPurchaseDate: "2026-03-15",
-    status: "Active",
-  },
-  {
-    id: "C005",
-    name: "Amit Singh",
-    phone: "+91 98765 43211",
-    email: "amit.singh@email.com",
-    region: "Punjab",
-    dealerName: "Punjab Agro Solutions",
-    type: "Individual",
-    totalPurchases: 1,
-    totalSpent: 2350000,
-    lastPurchaseDate: "2026-02-28",
-    status: "Active",
-  },
-];
-
 // Mock Dealers
 export const mockDealers: Dealer[] = [
   {
-    _id: "D001",
-    companyName: "Punjab Agro Solutions",
-    ownerName: "Harpreet Singh",
+    id: "D001",
+    name: "Punjab Agro Solutions",
     code: "DLR-PB-001",
     region: "Punjab",
     city: "Ludhiana",
-    address: "123, Agro Lane, Industrial Area",
-    pincode: "141001",
-    contact: "+91 98765 00001",
+    contactPerson: "Harpreet Singh",
+    phone: "+91 98765 00001",
     email: "contact@punjabagro.com",
-    gstin: "03AAAAA0000A1Z5",
-    pan: "AAAAA0000A",
     creditLimit: 5000000,
     outstandingAmount: 2300000,
     performance: 92,
-    status: "Approved",
+    status: "Active",
     joinedDate: "2024-03-15",
     totalOrders: 45,
     totalRevenue: 8500000,
   },
   {
-    _id: "D002",
-    companyName: "South India Equipment",
-    ownerName: "Ravi Kumar",
+    id: "D002",
+    name: "South India Equipment",
     code: "DLR-AP-002",
     region: "Andhra Pradesh",
     city: "Vijayawada",
-    address: "45, Marine Drive, Tech Park",
-    pincode: "520001",
-    contact: "+91 98765 00002",
+    contactPerson: "Ravi Kumar",
+    phone: "+91 98765 00002",
     email: "contact@southindiaequip.com",
-    gstin: "37AAAAA0000A1Z5",
-    pan: "BBBBB1111B",
     creditLimit: 7000000,
     outstandingAmount: 3500000,
     performance: 88,
-    status: "Approved",
+    status: "Active",
     joinedDate: "2024-01-20",
     totalOrders: 62,
     totalRevenue: 12500000,
   },
   {
-    _id: "D003",
-    companyName: "Haryana Farm Tech",
-    ownerName: "Sunil Sharma",
+    id: "D003",
+    name: "Haryana Farm Tech",
     code: "DLR-HR-003",
     region: "Haryana",
     city: "Karnal",
-    address: "89, Grain Market, Sector 12",
-    pincode: "132001",
-    contact: "+91 98765 00003",
+    contactPerson: "Sunil Sharma",
+    phone: "+91 98765 00003",
     email: "contact@haryanafarm.com",
-    gstin: "06AAAAA0000A1Z5",
-    pan: "CCCCC2222C",
     creditLimit: 4000000,
     outstandingAmount: 1800000,
     performance: 85,
-    status: "Approved",
+    status: "Active",
     joinedDate: "2024-06-10",
     totalOrders: 38,
     totalRevenue: 6800000,
   },
   {
-    _id: "D004",
-    companyName: "UP Machinery Hub",
-    ownerName: "Ajay Verma",
+    id: "D004",
+    name: "UP Machinery Hub",
     code: "DLR-UP-004",
     region: "Uttar Pradesh",
     city: "Meerut",
-    address: "Shop 12, Highway Plaza",
-    pincode: "250001",
-    contact: "+91 98765 00004",
+    contactPerson: "Ajay Verma",
+    phone: "+91 98765 00004",
     email: "contact@upmachinery.com",
-    gstin: "09AAAAA0000A1Z5",
-    pan: "DDDDD3333D",
     creditLimit: 6000000,
     outstandingAmount: 5500000,
     performance: 75,
-    status: "Approved",
+    status: "Active",
     joinedDate: "2023-11-05",
     totalOrders: 52,
     totalRevenue: 9500000,
   },
   {
-    _id: "D005",
-    companyName: "Maharashtra Agri Solutions",
-    ownerName: "Prakash Jadhav",
+    id: "D005",
+    name: "Maharashtra Agri Solutions",
     code: "DLR-MH-005",
     region: "Maharashtra",
     city: "Nashik",
-    address: "Vineyard Street, Near Station",
-    pincode: "422001",
-    contact: "+91 98765 00005",
+    contactPerson: "Prakash Jadhav",
+    phone: "+91 98765 00005",
     email: "contact@maharashtraagri.com",
-    gstin: "27AAAAA0000A1Z5",
-    pan: "EEEEE4444E",
     creditLimit: 5500000,
     outstandingAmount: 1200000,
     performance: 95,
-    status: "Approved",
+    status: "Active",
     joinedDate: "2024-02-28",
     totalOrders: 48,
     totalRevenue: 8900000,
@@ -568,6 +515,7 @@ export const mockOrders: Order[] = [
     dealer: "Punjab Agro Solutions",
     dealerId: "D001",
     product: "LOVOL HP-2000 Harvester (x2)",
+    productId: "P001",
     quantity: 2,
     totalValue: 3700000,
     orderDate: "2026-02-20",
@@ -582,6 +530,7 @@ export const mockOrders: Order[] = [
     dealer: "South India Equipment",
     dealerId: "D002",
     product: "LOVOL HP-4000 Harvester (x1)",
+    productId: "P003",
     quantity: 1,
     totalValue: 2850000,
     orderDate: "2026-02-22",
@@ -596,6 +545,7 @@ export const mockOrders: Order[] = [
     dealer: "Haryana Farm Tech",
     dealerId: "D003",
     product: "LOVOL HP-3000 Harvester (x1)",
+    productId: "P002",
     quantity: 1,
     totalValue: 2350000,
     orderDate: "2026-02-18",
@@ -610,6 +560,7 @@ export const mockOrders: Order[] = [
     dealer: "UP Machinery Hub",
     dealerId: "D004",
     product: "LOVOL HP-2000 Harvester (x3)",
+    productId: "P001",
     quantity: 3,
     totalValue: 5550000,
     orderDate: "2026-02-25",
@@ -624,6 +575,7 @@ export const mockOrders: Order[] = [
     dealer: "Maharashtra Agri Solutions",
     dealerId: "D005",
     product: "LOVOL HP-3000 Harvester (x2)",
+    productId: "P002",
     quantity: 2,
     totalValue: 4700000,
     orderDate: "2026-02-15",
@@ -701,59 +653,54 @@ export const mockWarrantyClaims: WarrantyClaim[] = [
 // Mock Maintenance Records
 export const mockMaintenanceRecords: MaintenanceRecord[] = [
   {
-    id: "MR001",
-    productName: "Lovol Harvester PR90",
-    productSerial: "HP2000-2025-1001",
-    customerName: "Rajesh Kumar",
+    id: "M001",
+    productSerial: "HP2000-2025-1234",
+    productName: "LOVOL HP-2000 Harvester",
     dealer: "Punjab Agro Solutions",
-    serviceType: "500-Hour",
-    dueDate: "2026-04-15",
-    lastServiceDate: "2025-10-15",
-    status: "Upcoming",
-  },
-  {
-    id: "MR002",
-    productName: "Lovol Harvester PR90",
-    productSerial: "HP2000-2025-1002",
-    customerName: "Vikram Reddy",
-    dealer: "South India Equipment",
     serviceType: "3-Month",
-    dueDate: "2026-03-20",
-    lastServiceDate: "n/a",
-    status: "Overdue",
-  },
-  {
-    id: "MR003",
-    productName: "Lovol Tractor TE404",
-    productSerial: "TE4000-2025-2005",
-    customerName: "Suresh Patel",
-    dealer: "Haryana Farm Tech",
-    serviceType: "6-Month",
-    dueDate: "2026-05-10",
-    lastServiceDate: "2025-11-10",
+    dueDate: "2026-03-05",
     status: "Upcoming",
+    lastServiceDate: "2025-12-05",
   },
   {
-    id: "MR004",
-    productName: "Lovol Harvester PR90",
-    productSerial: "HP2000-2025-1044",
-    customerName: "Maharashtra Agro Solutions",
+    id: "M002",
+    productSerial: "HP3000-2025-5678",
+    productName: "LOVOL HP-3000 Harvester",
+    dealer: "South India Equipment",
+    serviceType: "500-Hour",
+    dueDate: "2026-03-10",
+    status: "Upcoming",
+    lastServiceDate: "2025-11-20",
+  },
+  {
+    id: "M003",
+    productSerial: "HP4000-2024-3456",
+    productName: "LOVOL HP-4000 Harvester",
+    dealer: "UP Machinery Hub",
+    serviceType: "6-Month",
+    dueDate: "2026-02-25",
+    status: "Overdue",
+    lastServiceDate: "2025-08-25",
+  },
+  {
+    id: "M004",
+    productSerial: "HP2000-2025-9012",
+    productName: "LOVOL HP-2000 Harvester",
+    dealer: "Haryana Farm Tech",
+    serviceType: "3-Month",
+    dueDate: "2026-01-15",
+    status: "Completed",
+    lastServiceDate: "2026-01-12",
+  },
+  {
+    id: "M005",
+    productSerial: "HP3000-2025-7890",
+    productName: "LOVOL HP-3000 Harvester",
     dealer: "Maharashtra Agri Solutions",
     serviceType: "1000-Hour",
-    dueDate: "2026-02-15",
-    lastServiceDate: "2025-08-15",
-    status: "Completed",
-  },
-  {
-    id: "MR005",
-    productName: "Rice Harvester RG60",
-    productSerial: "RG6000-2025-3001",
-    customerName: "Amit Singh",
-    dealer: "Punjab Agro Solutions",
-    serviceType: "3-Month",
-    dueDate: "2026-04-20",
-    lastServiceDate: "n/a",
+    dueDate: "2026-03-20",
     status: "Upcoming",
+    lastServiceDate: "2025-09-15",
   },
 ];
 

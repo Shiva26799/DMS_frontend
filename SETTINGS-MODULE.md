@@ -36,6 +36,7 @@ Complete CRUD operations for system users:
 
 **Available Roles:**
 - Super Admin
+- Distributor
 - Regional Manager
 - Dealer
 - Accounts Team
@@ -125,7 +126,7 @@ The module follows the existing DMS design system:
 
 ### Sample Users (4 pre-loaded)
 - Rajesh Kumar (Super Admin)
-- Priya Sharma (Regional Manager)
+- Priya Sharma (Distributor)
 - Amit Patel (Warehouse Manager)
 - Sunita Reddy (Accounts Team)
 

@@ -2,11 +2,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import { toast } from "sonner";
 
-export const useProducts = () => {
+export const useProducts = (params: { page?: number; limit?: number; search?: string; category?: string } = {}) => {
   return useQuery({
-    queryKey: ["products"],
+    queryKey: ["products", params],
     queryFn: async () => {
-      const response = await apiClient.get("products");
+      const response = await apiClient.get("products", { params });
       return response.data;
     },
   });

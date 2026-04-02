@@ -1,10 +1,13 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router";
-import { Plus, Filter, Search, TrendingUp, AlertTriangle } from "lucide-react";
+import { Plus, Filter, Search, AlertTriangle } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
-import { Dealer, mockDealers } from "../data/mockData";
+import { Dealer } from "../data/mockData";
+import { useDealers } from "../context/DealerContext";
+import { regions } from "../constants/region";
+import { useDistributors } from "../hooks/useDistributors";
 import {
   Select,
   SelectContent,
@@ -17,10 +20,6 @@ import { Progress } from "../components/ui/progress";
 import { Skeleton } from "../components/ui/skeleton";
 import { useDebounce } from "../hooks/useDebounce";
 import { Label } from "../components/ui/label";
-import { Textarea } from "../components/ui/textarea";
-import { useDealers, useAddDealer } from "../hooks/useDealers";
-import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -32,91 +31,105 @@ import {
 import { useAuth } from "../context/AuthContext";
 
 export function DealerManagement() {
-  const { data: serverDealers = [], isLoading } = useDealers();
-  const addDealerMutation = useAddDealer();
-  const { isAdmin } = useAuth();
-
-  // Merge server dealers with mock dealers for a richer UI
-  // Use a map to ensure we don't duplicate by ID if they overlap
-  const dealers = useMemo(() => {
-    const merged = [...serverDealers];
-    mockDealers.forEach((mock: Dealer) => {
-      if (!merged.find(d => d._id === mock._id)) {
-        merged.push(mock);
-      }
-    });
-    return merged;
-  }, [serverDealers]);
-  
+  const { user, isAdmin, isDistributor } = useAuth();
+  const { dealers, addDealer, isLoading } = useDealers();
+  const { data: distributors } = useDistributors();
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterRegion, setFilterRegion] = useState<string>("all");
+  const [filterDistributor, setFilterDistributor] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
   // Form state for new dealer
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
-    companyName: "",
-    ownerName: "",
-    region: "",
+    name: "",
     city: "",
-    address: "",
-    pincode: "",
+    code: "",
+    region: "",
+    creditLimit: "",
     phone: "",
     email: "",
-    gstin: "",
-    pan: "",
-    creditLimit: "",
+    joinedDate: new Date().toISOString().split("T")[0],
+    distributorId: "",
   });
 
   const handleAddDealer = () => {
-    if (!formData.companyName || !formData.email) {
-      toast.error("Company Name and Email are required");
+    if (!formData.name) {
+      alert("Dealer Name is required.");
+      return;
+    }
+    if (!formData.code) {
+      alert("Dealer Code is required.");
+      return;
+    }
+    if (!formData.phone) {
+      alert("Phone number is required.");
+      return;
+    }
+    if (!formData.email) {
+      alert("Email is required.");
       return;
     }
 
     const newDealer: any = {
-      ...formData,
+      companyName: formData.name,
+      ownerName: formData.name, // Using name as ownerName for now as it's required
+      contact: formData.phone,
+      email: formData.email,
+      address: formData.city || "N/A",
+      code: formData.code,
+      region: formData.region || "Other",
       creditLimit: (Number(formData.creditLimit) || 0) * 100000,
-      status: "Pending",
-      contact: formData.phone, // mapping phone to contact for backend
+      performanceScore: 0,
+      distributorId: isAdmin ? formData.distributorId : (isDistributor ? user?.id : undefined),
     };
 
-    addDealerMutation.mutate(newDealer, {
-      onSuccess: () => {
-        setFormData({
-          companyName: "",
-          ownerName: "",
-          region: "",
-          city: "",
-          address: "",
-          pincode: "",
-          phone: "",
-          email: "",
-          gstin: "",
-          pan: "",
-          creditLimit: "",
-        });
-        setIsDialogOpen(false);
-      }
+    addDealer(newDealer);
+    setFormData({
+      name: "",
+      city: "",
+      code: "",
+      region: "",
+      creditLimit: "",
+      phone: "",
+      email: "",
+      joinedDate: new Date().toISOString().split("T")[0],
+      distributorId: "",
     });
+    setIsDialogOpen(false);
   };
 
-  const filteredDealers = dealers.filter((dealer: any) => {
-    const matchesStatus = filterStatus === "all" || dealer.status?.toLowerCase() === filterStatus;
-    const matchesRegion = filterRegion === "all" || dealer.region === filterRegion;
-    const matchesSearch =
-      dealer.companyName?.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
-    return matchesStatus && matchesRegion && matchesSearch;
+  const roleFilteredDealers = dealers.filter((dealer: Dealer) => {
+    if (isDistributor) {
+      return dealer.distributorId === user?.id;
+    }
+    return true;
   });
 
+  const filteredDealers = useMemo(() => {
+    return roleFilteredDealers.filter((dealer: Dealer) => {
+      const status = (dealer.status || "Active").toLowerCase();
+      const matchesStatus = filterStatus === "all" || status === filterStatus;
+      const matchesRegion = filterRegion === "all" || (dealer.region || "").toLowerCase() === filterRegion.toLowerCase();
+
+      // Add Distributor filter
+      const matchesDistributor = filterDistributor === "all" ||
+        (typeof dealer.distributorId === 'string' ? dealer.distributorId : (dealer.distributorId as any)?._id) === filterDistributor;
+
+      const name = (dealer.name || "").toLowerCase();
+      const code = (dealer.code || "").toLowerCase();
+      const search = debouncedSearchQuery.toLowerCase();
+
+      const matchesSearch = name.includes(search) || code.includes(search);
+      return matchesStatus && matchesRegion && matchesDistributor && matchesSearch;
+    });
+  }, [roleFilteredDealers, filterStatus, filterRegion, filterDistributor, debouncedSearchQuery]);
+
   const totalDealers = dealers.length;
-  const activeDealersCount = dealers.filter((d: any) => d.status === "Approved").length;
-  const totalCreditLimit = dealers.reduce((sum: number, d: Dealer) => sum + (d.creditLimit || 0), 0);
-  const totalOutstanding = dealers.reduce((sum: number, d: Dealer) => sum + (d.outstandingAmount || 0), 0);
-  const avgPerformance = totalDealers > 0 
-    ? Math.round(dealers.reduce((sum: number, d: Dealer) => sum + (d.performance || 0), 0) / totalDealers)
-    : 0;
+  const activeDealersCount = dealers.filter((d: Dealer) => d.status === "Approved").length;
+  const totalCreditLimit = dealers.reduce((sum: number, d: Dealer) => sum + (Number(d.creditLimit) || 0), 0);
+  const totalOutstanding = dealers.reduce((sum: number, d: Dealer) => sum + (Number(d.outstandingAmount) || 0), 0);
 
   return (
     <div className="p-6 space-y-6">
@@ -128,180 +141,160 @@ export function DealerManagement() {
             Manage dealer network and performance
           </p>
         </div>
-        {isAdmin && (
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Dealer
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[700px]">
-              <DialogHeader>
-                <DialogTitle>Add New Dealer</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="companyName">Company Name</Label>
-                  <Input
-                    id="companyName"
-                    placeholder="Registered business name"
-                    value={formData.companyName}
-                    onChange={(e) =>
-                      setFormData({ ...formData, companyName: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="ownerName">Owner/Contact Name</Label>
-                  <Input
-                    id="ownerName"
-                    placeholder="Primary contact person"
-                    value={formData.ownerName}
-                    onChange={(e) =>
-                      setFormData({ ...formData, ownerName: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email Address</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="contact@dealership.com"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    placeholder="+91 98765 00000"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="gstin">GSTIN</Label>
-                  <Input
-                    id="gstin"
-                    placeholder="22AAAAA0000A1Z5"
-                    value={formData.gstin}
-                    onChange={(e) =>
-                      setFormData({ ...formData, gstin: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="pan">PAN Number</Label>
-                  <Input
-                    id="pan"
-                    placeholder="ABCDE1234F"
-                    value={formData.pan}
-                    onChange={(e) =>
-                      setFormData({ ...formData, pan: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="region">Region</Label>
-                  <Select
-                    value={formData.region}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, region: value })
-                    }
-                  >
-                    <SelectTrigger id="region">
-                      <SelectValue placeholder="Select region" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Punjab">Punjab</SelectItem>
-                      <SelectItem value="Haryana">Haryana</SelectItem>
-                      <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
-                      <SelectItem value="Andhra Pradesh">Andhra Pradesh</SelectItem>
-                      <SelectItem value="Maharashtra">Maharashtra</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    placeholder="City"
-                    value={formData.city}
-                    onChange={(e) =>
-                      setFormData({ ...formData, city: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="pincode">Pincode</Label>
-                  <Input
-                    id="pincode"
-                    placeholder="6-digit pincode"
-                    value={formData.pincode}
-                    onChange={(e) =>
-                      setFormData({ ...formData, pincode: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="creditLimit">Credit Limit (in Lakhs)</Label>
-                  <Input
-                    id="creditLimit"
-                    type="number"
-                    placeholder="e.g. 50 for 50L"
-                    value={formData.creditLimit}
-                    onChange={(e) =>
-                      setFormData({ ...formData, creditLimit: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Dealer
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Add New Dealer</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
               <div className="grid gap-2">
-                <Label htmlFor="address">Full Address</Label>
-                <Textarea
-                  id="address"
-                  className="min-h-[80px]"
-                  placeholder="Enter full business address"
-                  value={formData.address}
+                <Label htmlFor="name">Dealer Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Enter dealer name"
+                  value={formData.name}
                   onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
+                    setFormData({ ...formData, name: e.target.value })
                   }
                 />
               </div>
-            </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  className="bg-blue-600 hover:bg-blue-700"
-                  onClick={handleAddDealer}
+              <div className="grid gap-2">
+                <Label htmlFor="city">City</Label>
+                <Input
+                  id="city"
+                  placeholder="Enter city"
+                  value={formData.city}
+                  onChange={(e) =>
+                    setFormData({ ...formData, city: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="code">Code</Label>
+                <Input
+                  id="code"
+                  placeholder="Enter dealer code"
+                  value={formData.code}
+                  onChange={(e) =>
+                    setFormData({ ...formData, code: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="region">Region</Label>
+                <Select
+                  value={formData.region}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, region: value })
+                  }
                 >
-                  Add Dealer
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+                  <SelectTrigger id="region">
+                    <SelectValue placeholder="Select region" />
+                  </SelectTrigger>
+                  {/* <SelectContent>
+                    <SelectItem value="Punjab">Punjab</SelectItem>
+                    <SelectItem value="Haryana">Haryana</SelectItem>
+                    <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
+                    <SelectItem value="Andhra Pradesh">Andhra Pradesh</SelectItem>
+                    <SelectItem value="Maharashtra">Maharashtra</SelectItem>
+                  </SelectContent> */}
+
+                  <SelectContent>
+                    {regions.map((region) => (
+                      <SelectItem key={region} value={region}>
+                        {region}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  placeholder="+91 98765 00000"
+                  value={formData.phone}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="contact@example.com"
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="joinedDate">Joined Date</Label>
+                <Input
+                  id="joinedDate"
+                  type="date"
+                  value={formData.joinedDate}
+                  onChange={(e) =>
+                    setFormData({ ...formData, joinedDate: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="creditLimit">Credit Limit (in Lakhs)</Label>
+                <Input
+                  id="creditLimit"
+                  type="number"
+                  placeholder="e.g. 50 for 50L"
+                  value={formData.creditLimit}
+                  onChange={(e) =>
+                    setFormData({ ...formData, creditLimit: e.target.value })
+                  }
+                />
+              </div>
+              {isAdmin && (
+                <div className="grid gap-2">
+                  <Label htmlFor="distributorId">Distributor</Label>
+                  <Select
+                    value={formData.distributorId}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, distributorId: value })
+                    }
+                  >
+                    <SelectTrigger id="distributorId">
+                      <SelectValue placeholder="Select distributor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {distributors?.map((dist: any) => (
+                        <SelectItem key={dist._id} value={dist._id}>
+                          {dist.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={handleAddDealer}
+              >
+                Add Dealer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Summary Cards */}
@@ -332,7 +325,7 @@ export function DealerManagement() {
             <Skeleton className="h-8 w-24 mt-1" />
           ) : (
             <p className="text-2xl font-bold text-gray-900 mt-1">
-              ₹{(totalCreditLimit / 10000000).toFixed(1)}Cr
+              ₹{(totalCreditLimit / 10000000).toFixed(1) || "0.0"}Cr
             </p>
           )}
         </Card>
@@ -342,7 +335,7 @@ export function DealerManagement() {
             <Skeleton className="h-8 w-24 mt-1" />
           ) : (
             <p className="text-2xl font-bold text-orange-600 mt-1">
-              ₹{(totalOutstanding / 10000000).toFixed(1)}Cr
+              ₹{(totalOutstanding / 10000000).toFixed(1) || "0.0"}Cr
             </p>
           )}
         </Card>
@@ -369,6 +362,8 @@ export function DealerManagement() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="inactive">Inactive</SelectItem>
               <SelectItem value="suspended">Suspended</SelectItem>
@@ -378,15 +373,39 @@ export function DealerManagement() {
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Region" />
             </SelectTrigger>
-            <SelectContent>
+            {/* <SelectContent>
               <SelectItem value="all">All Regions</SelectItem>
               <SelectItem value="Punjab">Punjab</SelectItem>
               <SelectItem value="Haryana">Haryana</SelectItem>
               <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
               <SelectItem value="Andhra Pradesh">Andhra Pradesh</SelectItem>
               <SelectItem value="Maharashtra">Maharashtra</SelectItem>
+            </SelectContent> */}
+            <SelectContent>
+              <SelectItem value="all">All Regions</SelectItem>
+              {regions.map((region) => (
+                <SelectItem key={region} value={region}>
+                  {region}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
+
+          {isAdmin && (
+            <Select value={filterDistributor} onValueChange={setFilterDistributor}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="All Distributors" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Distributors</SelectItem>
+                {distributors?.map((dist: any) => (
+                  <SelectItem key={dist._id} value={dist._id}>
+                    {dist.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </Card>
 
@@ -400,16 +419,21 @@ export function DealerManagement() {
                   Dealer
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Code
+                </th>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                   Region
                 </th>
+                {isAdmin && (
+                  <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                    Distributor
+                  </th>
+                )}
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                   Credit Limit
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                   Outstanding
-                </th>
-                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
-                  Performance
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                   Status
@@ -439,19 +463,28 @@ export function DealerManagement() {
                       </div>
                     </td>
                     <td className="px-6 py-4"><Skeleton className="h-4 w-12" /></td>
-                    <td className="px-6 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
                     <td className="px-6 py-4"><Skeleton className="h-8 w-24" /></td>
                   </tr>
                 ))
               ) : (
-                filteredDealers.map((dealer: any) => {
-                  const creditUtilization = ((dealer.outstandingAmount || 0) / (dealer.creditLimit || 1)) * 100;
+                filteredDealers.map((dealer: Dealer) => {
+                  const creditLimit = Number(dealer.creditLimit) || 0;
+                  const outstandingAmount = Number(dealer.outstandingAmount) || 0;
+                  const creditUtilization = creditLimit > 0 ? (outstandingAmount / creditLimit) * 100 : 0;
+
+                  // Extract distributor name securely
+                  const distId = typeof dealer.distributorId === 'object'
+                    ? (dealer.distributorId as any)?._id
+                    : dealer.distributorId;
+                  const distObj = distributors?.find((d: any) => d._id === distId);
+                  const distName = distObj?.name || (dealer as any).distributorId?.name || dealer.distributorName || "-";
+
                   return (
-                    <tr key={dealer._id} className="hover:bg-gray-50">
+                    <tr key={dealer.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
                         <div>
                           <p className="text-sm font-medium text-gray-900">
-                            {dealer.companyName}
+                            {dealer.name}
                           </p>
                           <p className="text-xs text-gray-500">
                             {dealer.city}
@@ -459,26 +492,43 @@ export function DealerManagement() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
+                        {dealer.code}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
                         {dealer.region}
                       </td>
+                      {isAdmin && (
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {distName}
+                        </td>
+                      )}
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                        ₹{( (dealer.creditLimit || 0) / 100000).toFixed(1)}L
+                        ₹{(creditLimit / 100000).toFixed(1)}L
                       </td>
                       <td className="px-6 py-4">
                         <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            ₹{( (dealer.outstandingAmount || 0) / 100000).toFixed(1)}L
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-medium text-gray-900">
+                              ₹{(outstandingAmount / 100000).toFixed(1)}L
+                            </p>
+                            {creditUtilization > 90 && (
+                              <AlertTriangle className="w-4 h-4 text-red-500" />
+                            )}
+                          </div>
+                          <Progress
+                            value={creditUtilization}
+                            className="h-1.5"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            {(creditUtilization || 0).toFixed(0)}% utilized
                           </p>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {dealer.performance || 0}%
+                        <StatusBadge status={dealer.status || "Active"} />
                       </td>
                       <td className="px-6 py-4">
-                        <StatusBadge status={dealer.status || "Pending"} />
-                      </td>
-                      <td className="px-6 py-4">
-                        <Link to={`/dealers/${dealer._id}`}>
+                        <Link to={`/dealers/${dealer.id}`}>
                           <Button variant="outline" size="sm">
                             View Details
                           </Button>

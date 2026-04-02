@@ -276,7 +276,8 @@ Gray Scale:     #F9FAFB to #111827 (backgrounds, text)
 
 ### Defined Roles
 1. **Super Admin** - Full system access
-2. **Regional Manager** - Regional sales and dealer management
+2. **Distributor** - Manage assigned dealers and regions
+3. **Regional Manager** - Regional sales and dealer management
 3. **Dealer** - Order placement and warranty claims
 4. **Accounts Team** - Financial and credit management
 5. **Service Team** - Warranty and maintenance management

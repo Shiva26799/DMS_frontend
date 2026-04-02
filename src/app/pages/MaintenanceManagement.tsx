@@ -3,16 +3,7 @@ import { Filter, Search, Calendar, AlertTriangle, CheckCircle } from "lucide-rea
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
-import { mockMaintenanceRecords, mockCustomers, mockProducts } from "../data/mockData";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "../components/ui/dialog";
-import { Label } from "../components/ui/label";
+import { mockMaintenanceRecords } from "../data/mockData";
 import {
   Select,
   SelectContent,
@@ -37,33 +28,12 @@ export function MaintenanceManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
-  // Form state for new maintenance
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    customerId: "",
-    productId: "",
-    serviceType: "3-Month",
-    dueDate: new Date().toISOString().split("T")[0],
-  });
-
-  const handleScheduleService = () => {
-    // In a real app, this would call an API
-    setIsDialogOpen(false);
-    setFormData({
-      customerId: "",
-      productId: "",
-      serviceType: "3-Month",
-      dueDate: new Date().toISOString().split("T")[0],
-    });
-  };
-
   const filteredRecords = mockMaintenanceRecords.filter((record) => {
     const matchesStatus = filterStatus === "all" || record.status.toLowerCase() === filterStatus;
     const matchesType = filterType === "all" || record.serviceType === filterType;
     const matchesSearch =
       record.productSerial.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
       record.productName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-      record.customerName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
       record.dealer.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
     return matchesStatus && matchesType && matchesSearch;
   });
@@ -90,100 +60,10 @@ export function MaintenanceManagement() {
             Preventive maintenance tracking and scheduling
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700">
-              <Calendar className="w-4 h-4 mr-2" />
-              Schedule Service
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Schedule Maintenance Service</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="customer">Select Customer</Label>
-                <Select
-                  value={formData.customerId}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, customerId: value })
-                  }
-                >
-                  <SelectTrigger id="customer">
-                    <SelectValue placeholder="Choose a customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mockCustomers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="product">Select Product</Label>
-                <Select
-                  value={formData.productId}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, productId: value })
-                  }
-                >
-                  <SelectTrigger id="product">
-                    <SelectValue placeholder="Choose a product" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mockProducts.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="serviceType">Service Type</Label>
-                <Select
-                  value={formData.serviceType}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, serviceType: value })
-                  }
-                >
-                  <SelectTrigger id="serviceType">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="3-Month">3-Month Service</SelectItem>
-                    <SelectItem value="6-Month">6-Month Service</SelectItem>
-                    <SelectItem value="500-Hour">500-Hour Service</SelectItem>
-                    <SelectItem value="1000-Hour">1000-Hour Service</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="dueDate">Due Date</Label>
-                <Input
-                  id="dueDate"
-                  type="date"
-                  value={formData.dueDate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, dueDate: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                className="bg-blue-600 hover:bg-blue-700"
-                onClick={handleScheduleService}
-              >
-                Schedule Service
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button className="bg-blue-600 hover:bg-blue-700">
+          <Calendar className="w-4 h-4 mr-2" />
+          Schedule Service
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -275,9 +155,6 @@ export function MaintenanceManagement() {
                   Product
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
-                  Customer
-                </th>
-                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                   Dealer
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
@@ -303,7 +180,6 @@ export function MaintenanceManagement() {
                   <tr key={i}>
                     <td className="px-6 py-4"><Skeleton className="h-4 w-24 border font-mono" /></td>
                     <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
-                    <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
                     <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
                     <td className="px-6 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
                     <td className="px-6 py-4">
@@ -334,9 +210,6 @@ export function MaintenanceManagement() {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {record.productName}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                      {record.customerName}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {record.dealer}

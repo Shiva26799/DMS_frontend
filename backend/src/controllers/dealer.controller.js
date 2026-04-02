@@ -4,50 +4,65 @@ import bcrypt from "bcryptjs";
 
 export const getDealers = async (req, res) => {
     try {
-        res.json(await Dealer.find().sort({ companyName: 1 }));
-    } catch (error) {
-        res.status(500).json({ message: "Error fetching dealers" });
-    }
-};
+        const query = {};
 
-export const getDealerById = async (req, res) => {
-    try {
-        const dealer = await Dealer.findById(req.params.id);
-        dealer ? res.json(dealer) : res.status(404).json({ message: "Dealer not found" });
+        // Filter dealers by distributor if the user is a Distributor
+        if (req.user.role === "Distributor") {
+            query.distributorId = req.user._id;
+        }
+
+        const dealers = await Dealer.find(query).sort({ companyName: 1 });
+        res.json(dealers);
     } catch (error) {
-        res.status(500).json({ message: "Error fetching dealer" });
+        res.status(500).json({ message: "Failed to fetch dealers" });
     }
 };
 
 export const onboardDealer = async (req, res) => {
     try {
-        res.status(201).json(await new Dealer(req.body).save());
+        const dealerData = { ...req.body };
+
+        // Automatically assign distributorId if created by a Distributor
+        if (req.user.role === "Distributor") {
+            dealerData.distributorId = req.user._id;
+        }
+
+        const dealer = new Dealer(dealerData);
+        await dealer.save();
+        res.status(201).json(dealer);
     } catch (error) {
-        res.status(400).json({ message: "Onboarding failed", error });
+        res.status(400).json({ message: "Failed to onboard dealer", error });
     }
 };
 
 export const approveDealer = async (req, res) => {
     try {
-        const { status, password } = req.body;
-        const dealer = await Dealer.findByIdAndUpdate(req.params.id, { status }, { new: true });
+        if (req.user.role !== "Super Admin") {
+            return res.status(403).json({ message: "Only Super Admins can approve dealers." });
+        }
+
+        const { password } = req.body;
+        if (!password) {
+            return res.status(400).json({ message: "Password is required for dealer approval." });
+        }
+
+        const dealer = await Dealer.findByIdAndUpdate(req.params.id, { status: "Approved" }, { returnDocument: 'after' });
         if (!dealer) return res.status(404).json({ message: "Dealer not found" });
 
-        if (status === "Approved") {
-            const existingUser = await User.findOne({ email: dealer.email });
-            if (!existingUser && password) {
-                await new User({
-                    name: dealer.ownerName,
-                    email: dealer.email,
-                    password: await bcrypt.hash(password, 10),
-                    phone: dealer.contact,
-                    role: "Dealer",
-                    dealerId: dealer._id
-                }).save();
-            }
-        }
+        // Create a User account for the dealer
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = new User({
+            name: dealer.companyName,
+            email: dealer.email,
+            password: hashedPassword,
+            phone: dealer.contact,
+            role: "Dealer",
+            dealerId: dealer._id
+        });
+        await newUser.save();
+
         res.json(dealer);
     } catch (error) {
-        res.status(400).json({ message: "Approval failed", error: error.message });
+        res.status(400).json({ message: "Failed to approve dealer" });
     }
 }

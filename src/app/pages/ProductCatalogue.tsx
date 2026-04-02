@@ -26,6 +26,7 @@ import {
 } from "../components/ui/dialog";
 import { toast } from "sonner";
 import { useProducts, useWarehouses, useAddProduct, useBulkAddProducts } from "../hooks/useProducts";
+import { useDebounce } from "../hooks/useDebounce";
 
 interface Product {
   _id: string;
@@ -45,13 +46,26 @@ interface Product {
 }
 
 export function ProductCatalogue() {
-  const { data: products = [], isLoading: isProductsLoading } = useProducts();
-  const { data: warehouses = [], isLoading: isWarehousesLoading } = useWarehouses();
-  
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(12);
+
+  const debouncedSearch = useDebounce(searchQuery, 400);
+
+  const { data, isLoading: isProductsLoading } = useProducts({ 
+    page: currentPage, 
+    limit: itemsPerPage, 
+    search: debouncedSearch,
+    category: filterCategory === "all" ? undefined : filterCategory
+  });
+  
+  const products = data?.products || [];
+  const totalProducts = data?.totalProducts || 0;
+  const totalPages = data?.totalPages || 0;
+  const counts = data?.counts || { total: 0, Harvester: 0, "Spare Part": 0 };
+
+  const { data: warehouses = [], isLoading: isWarehousesLoading } = useWarehouses();
 
   const loading = isProductsLoading || isWarehousesLoading;
 
@@ -97,23 +111,8 @@ export function ProductCatalogue() {
     setSpecs(updated);
   };
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((product: Product) => {
-      const matchesCategory = filterCategory === "all" || product.category === filterCategory;
-      const matchesSearch =
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (product.sku && product.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (product.partNumber && product.partNumber.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesCategory && matchesSearch;
-    });
-  }, [products, filterCategory, searchQuery]);
-
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
-  
-  const paginatedProducts = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredProducts, currentPage, itemsPerPage]);
+  const filteredProducts = products;
+  const paginatedProducts = products;
 
   const addMutation = useAddProduct();
   const bulkMutation = useBulkAddProducts();
@@ -280,13 +279,13 @@ export function ProductCatalogue() {
         }
       };
 
-        if (selectedFile) {
-          reader.readAsArrayBuffer(selectedFile);
-        }
-      } catch (err: any) {
-        toast.error("Error reading file");
+      if (selectedFile) {
+        reader.readAsArrayBuffer(selectedFile);
       }
-    };
+    } catch (err: any) {
+      toast.error("Error reading file");
+    }
+  };
 
   const actionLoading = addMutation.isPending || bulkMutation.isPending;
 
@@ -324,19 +323,19 @@ export function ProductCatalogue() {
         <Card className="p-4">
           <p className="text-sm text-gray-600">Total Products</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">
-            {products.length}
+            {counts.total}
           </p>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Harvesters</p>
           <p className="text-2xl font-bold text-blue-600 mt-1">
-            {products.filter((p: any) => p.category === "Harvester").length}
+            {counts.Harvester}
           </p>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Spare Parts</p>
           <p className="text-2xl font-bold text-green-600 mt-1">
-            {products.filter((p: any) => p.category === "Spare Part").length}
+            {counts["Spare Part"]}
           </p>
         </Card>
       </div>
@@ -489,7 +488,7 @@ export function ProductCatalogue() {
               </Select>
             </div>
             <div className="text-sm text-gray-500">
-              Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredProducts.length)}</span> of <span className="font-medium">{filteredProducts.length}</span> products
+              Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, totalProducts)}</span> of <span className="font-medium">{totalProducts}</span> products
             </div>
           </div>
           <div className="flex items-center gap-2">

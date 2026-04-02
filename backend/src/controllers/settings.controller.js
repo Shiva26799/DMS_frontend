@@ -1,6 +1,7 @@
 import { CompanyInfo } from "../models/company-info.model.js";
 import { User } from "../models/user.model.js";
 import { Warehouse } from "../models/warehouse.model.js";
+import { Dealer } from "../models/dealer.model.js";
 import bcrypt from "bcryptjs";
 
 // COMPANY INFO
@@ -92,8 +93,16 @@ export const updateUser = async (req, res) => {
 
 export const deleteUser = async (req, res) => {
     try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        // If the user being deleted is a dealer, cascade delete their dealer profile
+        if (user.dealerId) {
+            await Dealer.findByIdAndDelete(user.dealerId);
+        }
+
         await User.findByIdAndDelete(req.params.id);
-        res.json({ message: "User deleted" });
+        res.json({ message: "User and associated dealer deleted" });
     } catch (error) {
         res.status(400).json({ message: "Failed to delete user", error });
     }

@@ -8,11 +8,11 @@ import { Label } from "../components/ui/label";
 import { Card } from "../components/ui/card";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import bgImage from "../../images/617-0f8efea56ae44236805db27360998b29.jpg";
 
 export function Login() {
     const [email, setEmail] = useState("admin@lovol.com");
     const [password, setPassword] = useState("admin");
-    const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
     const { login } = useAuth();
     const loginMutation = useLoginMutation();
@@ -27,10 +27,8 @@ export function Login() {
                 toast.success("Successfully logged in");
                 navigate("/");
             },
-            onError: (err: any) => {
-                const message = err.response?.data?.message || "Login failed";
-                setError(message);
-                toast.error(message);
+            onError: (error: any) => {
+                toast.error(error.response?.data?.message || "Login failed");
             }
         });
     };
@@ -38,8 +36,11 @@ export function Login() {
     const isLoading = loginMutation.isPending;
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-            <Card className="max-w-md w-full p-8 shadow-xl">
+        <div 
+            className="min-h-screen flex items-center justify-center bg-cover bg-center bg-no-repeat relative py-12 px-4 sm:px-6 lg:px-8"
+            style={{ backgroundImage: `url(${bgImage})` }}
+        >
+            <Card className="max-w-md w-full p-8 shadow-2xl relative z-10 bg-white/90 backdrop-blur-sm">
                 <div className="text-center mb-8">
                     <div className="w-64 h-24 bg-transparent rounded-lg mx-auto flex items-center justify-center mb-1 overflow-hidden">
                         <img
@@ -59,6 +60,11 @@ export function Login() {
                 </div>
 
                 <form className="space-y-6" onSubmit={handleLogin}>
+                    {loginMutation.isError && (
+                        <div className="bg-red-50 text-red-600 text-sm p-3 rounded-md border border-red-200 text-center font-medium">
+                            {(loginMutation.error as any)?.response?.data?.message || "Invalid email or password."}
+                        </div>
+                    )}
                     <div>
                         <Label htmlFor="email">Email address</Label>
                         <Input
@@ -66,10 +72,7 @@ export function Login() {
                             type="email"
                             required
                             value={email}
-                            onChange={(e) => {
-                                setEmail(e.target.value);
-                                setError(null);
-                            }}
+                            onChange={(e) => setEmail(e.target.value)}
                             className="mt-1"
                             placeholder="admin@lovol.com"
                         />
@@ -82,20 +85,11 @@ export function Login() {
                             type="password"
                             required
                             value={password}
-                            onChange={(e) => {
-                                setPassword(e.target.value);
-                                setError(null);
-                            }}
+                            onChange={(e) => setPassword(e.target.value)}
                             className="mt-1"
                             placeholder="••••••••"
                         />
                     </div>
-
-                    {error && (
-                        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-md text-sm">
-                            {error}
-                        </div>
-                    )}
 
                     <Button
                         type="submit"

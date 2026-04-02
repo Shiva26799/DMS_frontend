@@ -190,6 +190,7 @@ All mock data is defined in `/src/app/data/mockData.ts` with TypeScript interfac
 The system is designed to support the following user roles:
 
 - **Super Admin:** Full system access
+- **Distributor:** Manage assigned dealers and regions
 - **Regional Manager:** Regional sales and dealer management
 - **Dealer:** Order placement and warranty claims
 - **Accounts Team:** Financial and credit management

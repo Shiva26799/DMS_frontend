@@ -4,7 +4,6 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Login } from "./pages/Login";
 import { ExecutiveDashboard } from "./pages/ExecutiveDashboard";
 import { LeadManagement } from "./pages/LeadManagement";
-import { CustomerManagement } from "./pages/CustomerManagement";
 import { LeadDetail } from "./pages/LeadDetail";
 import { DealerManagement } from "./pages/DealerManagement";
 import { DealerDetail } from "./pages/DealerDetail";
@@ -34,7 +33,6 @@ export const router = createBrowserRouter([
         children: [
           { index: true, Component: ExecutiveDashboard },
           { path: "leads", Component: LeadManagement },
-          { path: "customers", Component: CustomerManagement },
           { path: "leads/:id", Component: LeadDetail },
           { path: "dealers", Component: DealerManagement },
           { path: "dealers/:id", Component: DealerDetail },
