@@ -41,17 +41,27 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/warranty", warrantyRoutes);
 
 // Database connection
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI;
 
-mongoose
-    .connect(MONGODB_URI)
-    .then(() => {
-        console.log(`Connected to MongoDB in ${process.env.NODE_ENV || "development"} mode`);
-        app.listen(PORT, () => {
-            console.log(`Server is running on port ${PORT}`);
+if (MONGODB_URI) {
+    mongoose
+        .connect(MONGODB_URI)
+        .then(() => {
+            console.log(`Connected to MongoDB in ${process.env.NODE_ENV || "development"} mode`);
+        })
+        .catch((err) => {
+            console.error("MongoDB connection error:", err);
         });
-    })
-    .catch((err) => {
-        console.error("MongoDB connection error:", err);
+} else {
+    console.warn("MONGODB_URI is not defined in environment variables");
+}
+
+// Only listen if not being imported as a module (e.g., direct node execution)
+if (import.meta.url === `file://${fileURLToPath(import.meta.url)}` && !process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
     });
+}
+
+export default app;
