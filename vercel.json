@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "backend/*.pem"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/:path*",
