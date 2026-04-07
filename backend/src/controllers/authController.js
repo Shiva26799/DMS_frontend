@@ -41,8 +41,8 @@ export const login = async (req, res) => {
             { userId: user._id, role: user.role },
             privateKey,
             { 
-                algorithm: process.env.JWT_ALGO, 
-                expiresIn: process.env.JWT_EXPIRATION 
+                algorithm: "RS256", // Explicitly use RS256 for PEM keys
+                expiresIn: process.env.JWT_EXPIRATION || "1d" 
             }
         );
 
