@@ -46,7 +46,7 @@ const navigation: NavItem[] = [
 export function Sidebar() {
   const location = useLocation();
   const { user, role: contextRole } = useAuth();
-  
+
   // Normalize role: treat "Admin" as "Super Admin" for backward compatibility
   const role = contextRole === "Admin" ? "Super Admin" : contextRole;
 

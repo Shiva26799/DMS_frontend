@@ -37,6 +37,10 @@ export const createOrder = async (req, res) => {
         const newOrder = new Order({
             orderNumber,
             dealerId,
+            metadata: {
+                DealerName: dealer.companyName,
+                DistributorName: dealer.metadata?.DistributorName
+            },
             products: itemizedProducts,
             totalValue,
             currentStage: "PO Upload",
@@ -63,12 +67,24 @@ export const createOrder = async (req, res) => {
 // Get all orders
 export const getOrders = async (req, res) => {
     try {
-        const orders = await Order.find()
+        const user = req.user;
+        let query = {};
+
+        if (user.role === "Dealer") {
+            query = { dealerId: user.dealerId };
+        } else if (user.role === "Distributor") {
+            const dealers = await Dealer.find({ distributorId: user._id });
+            const dealerIds = dealers.map(d => d._id);
+            query = { dealerId: { $in: dealerIds } };
+        }
+
+        const orders = await Order.find(query)
             .populate("dealerId", "companyName ownerName code")
             .populate("products.productId", "name price sku")
             .sort({ createdAt: -1 });
         res.json(orders);
     } catch (error) {
+        console.error("Fetch orders error:", error);
         res.status(500).json({ message: "Error fetching orders", error: error.message });
     }
 };
@@ -76,6 +92,7 @@ export const getOrders = async (req, res) => {
 // Get order by ID
 export const getOrderById = async (req, res) => {
     try {
+        const user = req.user;
         const order = await Order.findById(req.params.id)
             .populate("dealerId", "companyName ownerName code contact email address region")
             .populate("products.productId", "name price sku category description");
@@ -83,8 +100,22 @@ export const getOrderById = async (req, res) => {
         if (!order) {
             return res.status(404).json({ message: "Order not found" });
         }
+
+        // Security: Role-based access control for specific order
+        if (user.role === "Dealer" && String(order.dealerId?._id || order.dealerId) !== String(user.dealerId)) {
+            return res.status(403).json({ message: "Unauthorized access to this order." });
+        }
+
+        if (user.role === "Distributor") {
+            const dealer = await Dealer.findOne({ _id: order.dealerId, distributorId: user._id });
+            if (!dealer) {
+                return res.status(403).json({ message: "Unauthorized access to this order (not your dealer)." });
+            }
+        }
+
         res.json(order);
     } catch (error) {
+        console.error("Fetch order by ID error:", error);
         res.status(500).json({ message: "Error fetching order", error: error.message });
     }
 };

@@ -23,6 +23,10 @@ export const createClaim = async (req, res) => {
             claimNumber,
             orderId: originalOrder?._id,
             dealerId,
+            metadata: {
+                DealerName: dealer.companyName,
+                DistributorName: dealer.metadata?.DistributorName
+            },
             productId,
             machineSerialNumber,
             engineNumber: originalOrder?.warrantyDetails?.engineNumber,
@@ -47,12 +51,24 @@ export const createClaim = async (req, res) => {
 // Get all claims
 export const getClaims = async (req, res) => {
     try {
-        const claims = await WarrantyClaim.find()
+        const user = req.user;
+        let query = {};
+
+        if (user.role === "Dealer") {
+            query = { dealerId: user.dealerId };
+        } else if (user.role === "Distributor") {
+            const dealers = await Dealer.find({ distributorId: user._id });
+            const dealerIds = dealers.map(d => d._id);
+            query = { dealerId: { $in: dealerIds } };
+        }
+
+        const claims = await WarrantyClaim.find(query)
             .populate("dealerId", "companyName ownerName code")
             .populate("productId", "name sku")
             .sort({ createdAt: -1 });
         res.json(claims);
     } catch (error) {
+        console.error("Fetch claims error:", error);
         res.status(500).json({ message: "Error fetching claims", error: error.message });
     }
 };
@@ -60,13 +76,28 @@ export const getClaims = async (req, res) => {
 // Get claim by ID
 export const getClaimById = async (req, res) => {
     try {
+        const user = req.user;
         const claim = await WarrantyClaim.findById(req.params.id)
             .populate("dealerId", "companyName ownerName code contact email address region")
             .populate("productId", "name sku category description");
 
         if (!claim) return res.status(404).json({ message: "Claim not found" });
+
+        // Security: Role-based access control for specific claim
+        if (user.role === "Dealer" && String(claim.dealerId?._id || claim.dealerId) !== String(user.dealerId)) {
+            return res.status(403).json({ message: "Unauthorized access to this warranty claim." });
+        }
+
+        if (user.role === "Distributor") {
+            const dealer = await Dealer.findOne({ _id: claim.dealerId, distributorId: user._id });
+            if (!dealer) {
+                return res.status(403).json({ message: "Unauthorized access to this claim (not your dealer)." });
+            }
+        }
+
         res.json(claim);
     } catch (error) {
+        console.error("Fetch claim by ID error:", error);
         res.status(500).json({ message: "Error fetching claim", error: error.message });
     }
 };

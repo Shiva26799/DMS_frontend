@@ -2,10 +2,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
+import { useAuth } from "../context/AuthContext";
 
 export const useLeads = () => {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["leads"],
+    queryKey: ["leads", user?.id],
     queryFn: async () => {
       const res = await apiClient.get("/leads");
       return res.data;
@@ -14,8 +16,9 @@ export const useLeads = () => {
 };
 
 export const useLeadDetail = (id: string | undefined) => {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["leads", id],
+    queryKey: ["leads", user?.id, id],
     queryFn: async () => {
       if (!id) return null;
       const res = await apiClient.get(`/leads/${id}`);

@@ -26,6 +26,10 @@ import { Link } from "react-router";
 import { Skeleton } from "../components/ui/skeleton";
 import { useState, useEffect } from "react";
 import { useOrders } from "../context/OrderContext";
+import { useLeads } from "../hooks/useLeads";
+import { useWarranty } from "../context/WarrantyContext";
+import { useDealers } from "../hooks/useDealers";
+import { useAuth } from "../context/AuthContext";
 
 const salesData = [
   { month: "Aug", sales: 12.5, target: 15 },
@@ -45,19 +49,31 @@ const inventoryData = [
 ];
 
 export function ExecutiveDashboard() {
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, isAdmin, isDistributor } = useAuth();
+  const { orders, isLoading: isOrdersLoading } = useOrders();
+  const { data: leads = [], isLoading: isLeadsLoading } = useLeads();
+  const { claims = [], isLoading: isClaimsLoading } = useWarranty();
+  const { data: dealers = [], isLoading: isDealersLoading } = useDealers();
 
-  const { orders } = useOrders();
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
+  const isLoading = isOrdersLoading || isLeadsLoading || isClaimsLoading || isDealersLoading;
 
   const recentOrders = orders.slice(0, 5);
-  const pendingClaims = mockWarrantyClaims.filter(
-    (c) => c.status === "Submitted" || c.status === "Under Review"
-  );
+  
+  // Real-time metrics
+  const monthlyOrders = orders.filter(o => {
+    const orderDate = new Date(o.orderDate);
+    const now = new Date();
+    return orderDate.getMonth() === now.getMonth() && orderDate.getFullYear() === now.getFullYear();
+  }).length;
+
+  const pendingApprovals = orders.filter(o => o.currentStage === "Order Approval" || o.currentStage === "Payment Verification").length;
+  
+  const openWarranties = claims.filter(c => c.status !== "Closed").length;
+
+  const pendingClaims = claims.filter(
+    (c) => c.status === "Complaint Received" || c.status === "Technician Assigned"
+  ).slice(0, 5);
+
   const lowStockItems = mockInventory.filter(
     (i) => i.status === "Low" || i.status === "Critical"
   );
@@ -88,28 +104,27 @@ export function ExecutiveDashboard() {
         ) : (
           <>
             <KPICard
-              title="Monthly Orders"
-              value="24"
-              icon={ShoppingCart}
-              trend={{ value: "12%", positive: true }}
+              title={isAdmin ? "Total Dealers" : "Active Dealers"}
+              value={isAdmin ? dealers.length.toString() : dealers.length.toString()}
+              icon={Package}
               color="blue"
             />
             <KPICard
+              title="Recent Orders"
+              value={orders.length.toString()}
+              icon={ShoppingCart}
+              trend={{ value: `${monthlyOrders} this month`, positive: true }}
+              color="green"
+            />
+            <KPICard
               title="Pending Approvals"
-              value="8"
+              value={pendingApprovals.toString()}
               icon={Clock}
               color="orange"
             />
             <KPICard
-              title="Inventory Value"
-              value="₹15.2Cr"
-              icon={Package}
-              trend={{ value: "5%", positive: true }}
-              color="green"
-            />
-            <KPICard
               title="Open Warranty"
-              value="12"
+              value={openWarranties.toString()}
               icon={AlertCircle}
               color="orange"
             />
@@ -262,7 +277,7 @@ export function ExecutiveDashboard() {
             ) : (
               pendingClaims.map((claim) => (
                 <div
-                  key={claim.id}
+                  key={claim._id}
                   className="border border-gray-200 rounded-lg p-3"
                 >
                   <div className="flex items-start justify-between mb-2">
@@ -270,7 +285,7 @@ export function ExecutiveDashboard() {
                       <p className="text-sm font-medium text-gray-900">
                         {claim.claimNumber}
                       </p>
-                      <p className="text-xs text-gray-600">{claim.dealer}</p>
+                      <p className="text-xs text-gray-600">{claim.dealerId.companyName}</p>
                     </div>
                     <StatusBadge status={claim.status} />
                   </div>

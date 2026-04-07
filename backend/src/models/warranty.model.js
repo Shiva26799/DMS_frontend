@@ -5,6 +5,10 @@ const warrantyClaimSchema = new mongoose.Schema(
         claimNumber: { type: String, required: true, unique: true },
         orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" }, // Optional link to original order
         dealerId: { type: mongoose.Schema.Types.ObjectId, ref: "Dealer", required: true },
+        metadata: {
+            DistributorName: { type: String },
+            DealerName: { type: String }
+        },
         productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
         machineSerialNumber: { type: String, required: true },
         engineNumber: { type: String },

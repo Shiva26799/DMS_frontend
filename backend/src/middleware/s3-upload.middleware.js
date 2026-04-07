@@ -111,17 +111,43 @@ export const uploadWarrantyMedia = multer({
     },
     fileFilter: (req, file, cb) => {
         const allowedTypes = [
-            "image/jpeg", 
-            "image/png", 
-            "image/webp", 
-            "video/mp4", 
-            "video/quicktime", 
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "video/mp4",
+            "video/quicktime",
             "video/x-msvideo"
         ];
         if (allowedTypes.includes(file.mimetype)) {
             cb(null, true);
         } else {
             cb(new Error("Only JPEG, PNG, WEBP images and MP4, MOV, AVI videos are allowed"));
+        }
+    },
+});
+
+export const uploadDealerKYC = multer({
+    storage: multerS3({
+        s3: s3,
+        bucket: process.env.AWS_S3_BUCKET_NAME,
+        metadata: function (req, file, cb) {
+            cb(null, { fieldName: file.fieldname });
+        },
+        key: function (req, file, cb) {
+            const fileExtension = file.originalname.split(".").pop();
+            const fileName = `kyc-${Date.now()}-${file.fieldname}.${fileExtension}`;
+            cb(null, `kyc/${fileName}`);
+        },
+    }),
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10 MB limit for KYC documents
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error("Only JPEG, PNG, WEBP, and PDF files are allowed"));
         }
     },
 });

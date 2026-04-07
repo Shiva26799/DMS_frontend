@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import { toast } from "sonner";
+import { useAuth } from "../context/AuthContext";
 
 // Company Info
 export const useCompanyInfo = () => {
@@ -51,8 +52,9 @@ export const useUpdateCompanyLogo = () => {
 
 // Users
 export const useUsers = () => {
+    const { user } = useAuth();
     return useQuery({
-        queryKey: ["users"],
+        queryKey: ["users", user?.id],
         queryFn: async () => {
             const res = await apiClient.get("settings/users");
             return res.data;

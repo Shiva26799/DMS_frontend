@@ -17,6 +17,10 @@ const activitySchema = new mongoose.Schema({
 const leadSchema = new mongoose.Schema(
     {   customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
         dealerId: { type: mongoose.Schema.Types.ObjectId, ref: "Dealer" },
+        metadata: {
+            DistributorName: { type: String },
+            DealerName: { type: String }
+        },
         customerName: { type: String, required: true },
         phone: { type: String, required: true },
         email: { type: String },

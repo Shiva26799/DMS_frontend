@@ -1,6 +1,6 @@
 import { useParams, Link } from "react-router";
 import { useState, useEffect } from "react";
-import { ArrowLeft, Phone, Mail, MapPin, Calendar, IndianRupee, Users, CheckCircle } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Calendar, IndianRupee, Users, CheckCircle, FileText } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
@@ -131,6 +131,7 @@ export function DealerDetail() {
               <TabsTrigger value="orders">Order History</TabsTrigger>
               <TabsTrigger value="warranty">Warranty Claims</TabsTrigger>
               <TabsTrigger value="performance">Performance</TabsTrigger>
+              <TabsTrigger value="kyc">KYC Documents</TabsTrigger>
             </TabsList>
 
             <TabsContent value="info" className="mt-6">
@@ -266,9 +267,9 @@ export function DealerDetail() {
                             </td>
                             <td className="px-4 py-3">
                               {(order as any).currentStage !== "Cancelled" && (order as any).currentStage !== "Closure" && (
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
                                   onClick={async () => {
                                     if (window.confirm(`Are you sure you want to cancel order ${order.orderNumber}?`)) {
@@ -378,6 +379,51 @@ export function DealerDetail() {
                 </ResponsiveContainer>
               </Card>
             </TabsContent>
+            <TabsContent value="kyc" className="mt-6">
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">KYC Documents</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Verification documents for {dealer.companyType || "this dealer"}
+                    </p>
+                  </div>
+                  <StatusBadge status={dealer.status} />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {dealer.kycDocuments && dealer.kycDocuments.length > 0 ? (
+                    dealer.kycDocuments.map((doc: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between p-4 border rounded-lg bg-gray-50 hover:bg-white transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-100 rounded-lg">
+                            <FileText className="w-5 h-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 capitalize">
+                              {doc.name.replace(/([A-Z])/g, ' $1').trim()}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Uploaded on {new Date(doc.uploadedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                            View Document
+                          </a>
+                        </Button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="col-span-full py-8 text-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                      <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-sm text-gray-500">No KYC documents found for this dealer.</p>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </TabsContent>
           </Tabs>
         </div>
 
@@ -389,8 +435,8 @@ export function DealerDetail() {
               {isAdmin && dealer.status === "Pending" && (
                 <Dialog open={isApprovalOpen} onOpenChange={setIsApprovalOpen}>
                   <DialogTrigger asChild>
-                    <Button 
-                      className="w-full justify-start bg-green-600 hover:bg-green-700 text-white" 
+                    <Button
+                      className="w-full justify-start bg-green-600 hover:bg-green-700 text-white"
                     >
                       <CheckCircle className="w-4 h-4 mr-2" />
                       Approve Dealer
@@ -419,7 +465,7 @@ export function DealerDetail() {
                       <Button variant="outline" onClick={() => setIsApprovalOpen(false)}>
                         Cancel
                       </Button>
-                      <Button 
+                      <Button
                         disabled={!password || isApproving}
                         onClick={async () => {
                           try {

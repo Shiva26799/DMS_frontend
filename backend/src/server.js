@@ -41,22 +41,17 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/warranty", warrantyRoutes);
 
 // Database connection
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
 const MONGODB_URI = process.env.MONGODB_URI;
 
 mongoose
     .connect(MONGODB_URI)
     .then(() => {
-        console.log("Connected to MongoDB");
-        // Only listen if not running as a Vercel serverless function
-        if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-            app.listen(PORT, () => {
-                console.log(`Server is running on port ${PORT}`);
-            });
-        }
+        console.log(`Connected to MongoDB in ${process.env.NODE_ENV || "development"} mode`);
+        app.listen(PORT, () => {
+            console.log(`Server is running on port ${PORT}`);
+        });
     })
     .catch((err) => {
         console.error("MongoDB connection error:", err);
     });
-
-export default app;

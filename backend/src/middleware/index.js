@@ -20,7 +20,9 @@ export const checkJWTToken = async (req, res, next) => {
         const token = authHeader.split(" ")[1];
         // Read public key for RS256 verification
         const publicKey = fs.readFileSync(PUBLIC_KEY_PATH, "utf8");
-        const decoded = jwt.verify(token, publicKey, { algorithms: ["RS256"] });
+        const decoded = jwt.verify(token, publicKey, {
+            algorithms: [process.env.JWT_ALGO]
+        });
 
         // CRITICAL: Fetch the user from DB to ensure they still exist and have the correct role
         const user = await User.findById(decoded.userId).select("-password");

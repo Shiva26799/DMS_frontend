@@ -4,6 +4,10 @@ const orderSchema = new mongoose.Schema(
     {
         orderNumber: { type: String, required: true, unique: true },
         dealerId: { type: mongoose.Schema.Types.ObjectId, ref: "Dealer", required: true },
+        metadata: {
+            DistributorName: { type: String },
+            DealerName: { type: String }
+        },
         products: [
             {
                 productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },

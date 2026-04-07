@@ -12,8 +12,19 @@ const dealerSchema = new mongoose.Schema(
         status: { type: String, enum: ["Pending", "Approved", "Rejected", "Suspended"], default: "Pending" },
         creditLimit: { type: Number, default: 0 },
         performanceScore: { type: Number, default: 0 },
+        companyType: { type: String, enum: ["LLP", "Pvt Ltd", "Proprietorship"], required: true },
+        kycDocuments: [
+            {
+                name: { type: String, required: true },
+                url: { type: String, required: true },
+                uploadedAt: { type: Date, default: Date.now }
+            }
+        ],
         distributorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-        kycDocuments: [{ type: String }],
+        metadata: {
+            DistributorName: { type: String },
+            DealerName: { type: String }
+        },
     },
     { timestamps: true }
 );

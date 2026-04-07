@@ -817,6 +817,7 @@ export function Settings() {
                 onValueChange={(value) =>
                   setUserForm({ ...userForm, role: value })
                 }
+                disabled={editingUser?.role === "Dealer"}
               >
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Select role" />
@@ -824,7 +825,9 @@ export function Settings() {
                 <SelectContent>
                   <SelectItem value="Super Admin">Super Admin</SelectItem>
                   <SelectItem value="Distributor">Distributor</SelectItem>
-                  <SelectItem value="Dealer">Dealer</SelectItem>
+                  {editingUser?.role === "Dealer" && (
+                    <SelectItem value="Dealer">Dealer</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>

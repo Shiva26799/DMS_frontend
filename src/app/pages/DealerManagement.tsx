@@ -20,6 +20,8 @@ import { Progress } from "../components/ui/progress";
 import { Skeleton } from "../components/ui/skeleton";
 import { useDebounce } from "../hooks/useDebounce";
 import { Label } from "../components/ui/label";
+import { Upload, FileText, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -52,52 +54,83 @@ export function DealerManagement() {
     email: "",
     joinedDate: new Date().toISOString().split("T")[0],
     distributorId: "",
+    companyType: "Proprietorship" as "LLP" | "Pvt Ltd" | "Proprietorship",
   });
 
-  const handleAddDealer = () => {
-    if (!formData.name) {
-      alert("Dealer Name is required.");
-      return;
-    }
-    if (!formData.code) {
-      alert("Dealer Code is required.");
-      return;
-    }
-    if (!formData.phone) {
-      alert("Phone number is required.");
-      return;
-    }
-    if (!formData.email) {
-      alert("Email is required.");
+  const [kycFiles, setKycFiles] = useState<{ [key: string]: File | null }>({});
+
+  const handleFileChange = (field: string, file: File | null) => {
+    setKycFiles(prev => ({ ...prev, [field]: file }));
+  };
+
+  const getRequiredDocs = () => {
+    return [
+      { label: "PAN Card", field: "pan" },
+      { label: "Aadhaar Card", field: "aadhaar" },
+      { label: "GST Certificate", field: "gst" },
+      { label: "Bank Proof", field: "bankProof" }
+    ];
+  };
+
+  const handleAddDealer = async () => {
+    if (!formData.name || !formData.code || !formData.phone || !formData.email) {
+      toast.error("Please fill in all required fields.");
       return;
     }
 
-    const newDealer: any = {
-      companyName: formData.name,
-      ownerName: formData.name, // Using name as ownerName for now as it's required
-      contact: formData.phone,
-      email: formData.email,
-      address: formData.city || "N/A",
-      code: formData.code,
-      region: formData.region || "Other",
-      creditLimit: (Number(formData.creditLimit) || 0) * 100000,
-      performanceScore: 0,
-      distributorId: isAdmin ? formData.distributorId : (isDistributor ? user?.id : undefined),
-    };
+    // Validation for KYC documents
+    const requiredDocs = getRequiredDocs();
+    const missingDocs = requiredDocs.filter(doc => !kycFiles[doc.field]);
+    if (missingDocs.length > 0) {
+      toast.error(`Please upload: ${missingDocs.map(d => d.label).join(", ")}`);
+      return;
+    }
 
-    addDealer(newDealer);
-    setFormData({
-      name: "",
-      city: "",
-      code: "",
-      region: "",
-      creditLimit: "",
-      phone: "",
-      email: "",
-      joinedDate: new Date().toISOString().split("T")[0],
-      distributorId: "",
-    });
-    setIsDialogOpen(false);
+    try {
+      const data = new FormData();
+      data.append("companyName", formData.name);
+      data.append("ownerName", formData.name);
+      data.append("contact", formData.phone);
+      data.append("email", formData.email);
+      data.append("address", formData.city || "N/A");
+      data.append("code", formData.code);
+      data.append("region", formData.region || "Other");
+      data.append("creditLimit", String((Number(formData.creditLimit) || 0) * 100000));
+      data.append("companyType", formData.companyType);
+
+      const dId = isAdmin ? formData.distributorId : (isDistributor ? user?.id : "");
+      if (dId) data.append("distributorId", dId);
+
+      // Append files
+      Object.entries(kycFiles).forEach(([field, file]) => {
+        if (file) data.append(field, file);
+      });
+
+      await addDealer(data);
+      toast.success("Dealer onboarded successfully!");
+
+      setFormData({
+        name: "",
+        city: "",
+        code: "",
+        region: "",
+        creditLimit: "",
+        phone: "",
+        email: "",
+        joinedDate: new Date().toISOString().split("T")[0],
+        distributorId: "",
+        companyType: "Proprietorship",
+      });
+      setKycFiles({});
+      setIsDialogOpen(false);
+    } catch (error: any) {
+      console.error("Dealer onboarding error:", error);
+      if (error.response?.data?.error === "DUPLICATE_EMAIL") {
+        toast.error("A dealer or user with this email already exists.");
+      } else {
+        toast.error(error.response?.data?.message || "Failed to onboard dealer.");
+      }
+    }
   };
 
   const roleFilteredDealers = dealers.filter((dealer: Dealer) => {
@@ -283,6 +316,75 @@ export function DealerManagement() {
                   </Select>
                 </div>
               )}
+
+              <div className="grid gap-2">
+                <Label htmlFor="companyType">Company Type</Label>
+                <Select
+                  value={formData.companyType}
+                  onValueChange={(value: any) => {
+                    setFormData({ ...formData, companyType: value });
+                    setKycFiles({}); // Reset files when type changes
+                  }}
+                >
+                  <SelectTrigger id="companyType">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LLP">LLP</SelectItem>
+                    <SelectItem value="Pvt Ltd">Pvt Ltd</SelectItem>
+                    <SelectItem value="Proprietorship">Proprietorship</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <p className="text-sm font-semibold text-gray-700">KYC Documents</p>
+                <div className="grid gap-4">
+                  {getRequiredDocs().map((doc) => (
+                    <div key={doc.field} className="space-y-1.5">
+                      <Label className="text-xs text-gray-500">{doc.label} *</Label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <Input
+                            type="file"
+                            className="hidden"
+                            id={`file-${doc.field}`}
+                            accept=".pdf,image/*"
+                            onChange={(e) => handleFileChange(doc.field, e.target.files?.[0] || null)}
+                          />
+                          <label
+                            htmlFor={`file-${doc.field}`}
+                            className={`flex items-center justify-between w-full px-3 py-2 border rounded-md cursor-pointer transition-all ${kycFiles[doc.field] ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200 hover:border-gray-300"
+                              }`}
+                          >
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              {kycFiles[doc.field] ? (
+                                <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                              ) : (
+                                <Upload className="w-4 h-4 text-gray-400 shrink-0" />
+                              )}
+                              <span className={`text-sm truncate ${kycFiles[doc.field] ? "text-blue-700 font-medium" : "text-gray-500"}`}>
+                                {kycFiles[doc.field]?.name || `Upload ${doc.label}`}
+                              </span>
+                            </div>
+                          </label>
+                        </div>
+                        {kycFiles[doc.field] && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-9 w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => handleFileChange(doc.field, null)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
             <DialogFooter>
               <Button

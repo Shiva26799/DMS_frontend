@@ -40,6 +40,8 @@ import { useLeads, useAddLead, useDeleteLead } from "../hooks/useLeads";
 import { useDebounce } from "../hooks/useDebounce";
 
 import { ProductCombobox } from "../components/ProductCombobox";
+import { useAuth } from "../context/AuthContext";
+import { useDealers } from "../hooks/useDealers";
 
 export interface Lead {
   _id: string;
@@ -59,7 +61,11 @@ export interface Lead {
   assignedTo?: string;
   assignedDate: string;
   notes?: string;
-  dealer?: string;
+  dealerId?: {
+    _id: string;
+    companyName: string;
+    ownerName?: string;
+  };
   followUps?: any[];
   createdAt: string;
 }
@@ -72,7 +78,9 @@ export function LeadManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
+  const { isAdmin, isDistributor, isDealer, user: authUser } = useAuth();
   const { data: leads = [], isLoading: isLeadsLoading } = useLeads();
+  const { data: dealers = [] } = useDealers();
   const addLeadMutation = useAddLead();
   const deleteLeadMutation = useDeleteLead();
 
@@ -89,6 +97,7 @@ export function LeadManagement() {
     inquiryType: "Walk-in" as "Walk-in" | "Field" | "Campaign / Activity" | "Digital/Web",
     rating: "Warm 🌤️",
     notes: "",
+    dealerId: "",
   });
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
 
@@ -115,6 +124,7 @@ export function LeadManagement() {
           inquiryType: "Walk-in",
           rating: "Warm 🌤️",
           notes: "",
+          dealerId: "",
         });
       }
     });
@@ -271,6 +281,9 @@ export function LeadManagement() {
                     <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                       Source
                     </th>
+                    <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                      Dealer
+                    </th>
 
                     <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                       Region
@@ -312,6 +325,7 @@ export function LeadManagement() {
                         <td className="px-6 py-4"><Skeleton className="h-6 w-16 rounded-full" /></td>
                         <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
                         <td className="px-6 py-4"><Skeleton className="h-4 w-16" /></td>
+                        <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
                         <td className="px-6 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
                         <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
                         <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
@@ -344,6 +358,9 @@ export function LeadManagement() {
                           >
                             {lead.source}
                           </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {lead.dealerId?.companyName || "—"}
                         </td>
 
                         <td className="px-6 py-4 text-sm text-gray-600">
@@ -464,6 +481,13 @@ export function LeadManagement() {
                                 {formatCurrency(lead.value)}
                               </span>
                             </div>
+                            {lead.dealerId && (
+                              <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5 text-[10px] text-gray-500">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                <span className="font-medium">Assigned:</span>
+                                <span className="truncate">{lead.dealerId.companyName}</span>
+                              </div>
+                            )}
                           </Card>
                         </Link>
                       </div>
@@ -542,7 +566,7 @@ export function LeadManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Web">Web</SelectItem>
-                    <SelectItem value="Dealer">Dealer</SelectItem>
+                    {!isDealer && <SelectItem value="Dealer">Dealer</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>

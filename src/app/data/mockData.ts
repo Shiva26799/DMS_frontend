@@ -51,6 +51,16 @@ export interface Dealer {
   totalRevenue: number;
   distributorId?: string;
   distributorName?: string;
+  metadata?: {
+    DistributorName?: string;
+    DealerName?: string;
+  };
+  companyType?: "LLP" | "Pvt Ltd" | "Proprietorship";
+  kycDocuments?: Array<{
+    name: string;
+    url: string;
+    uploadedAt: string;
+  }>;
 }
 
 export interface Product {

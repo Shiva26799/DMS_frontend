@@ -4,16 +4,19 @@ import bcrypt from "bcryptjs";
 
 export const getDealers = async (req, res) => {
     try {
-        const query = {};
+        const user = req.user;
+        let query = {};
 
-        // Filter dealers by distributor if the user is a Distributor
-        if (req.user.role === "Distributor") {
-            query.distributorId = req.user._id;
+        if (user.role === "Distributor") {
+            query.distributorId = user._id;
+        } else if (user.role === "Dealer") {
+            query._id = user.dealerId;
         }
 
         const dealers = await Dealer.find(query).sort({ companyName: 1 });
         res.json(dealers);
     } catch (error) {
+        console.error("Fetch dealers error:", error);
         res.status(500).json({ message: "Failed to fetch dealers" });
     }
 };
@@ -22,9 +25,36 @@ export const onboardDealer = async (req, res) => {
     try {
         const dealerData = { ...req.body };
 
+        // Process KYC Documents from uploaded files
+        if (req.files && Array.isArray(req.files)) {
+            dealerData.kycDocuments = req.files.map(file => ({
+                name: file.fieldname,
+                url: file.location,
+                uploadedAt: new Date()
+            }));
+        }
+
         // Automatically assign distributorId if created by a Distributor
+        dealerData.metadata = {
+            DealerName: dealerData.companyName,
+            DistributorName: req.user.role === "Distributor" ? req.user.name : undefined
+        };
+
         if (req.user.role === "Distributor") {
             dealerData.distributorId = req.user._id;
+        }
+
+        // Check for existing dealer or user with this email
+        const [existingDealer, existingUser] = await Promise.all([
+            Dealer.findOne({ email: dealerData.email }),
+            User.findOne({ email: dealerData.email })
+        ]);
+
+        if (existingDealer || existingUser) {
+            return res.status(400).json({ 
+                message: "A user with this email already exists.",
+                error: "DUPLICATE_EMAIL"
+            });
         }
 
         const dealer = new Dealer(dealerData);
@@ -46,8 +76,21 @@ export const approveDealer = async (req, res) => {
             return res.status(400).json({ message: "Password is required for dealer approval." });
         }
 
-        const dealer = await Dealer.findByIdAndUpdate(req.params.id, { status: "Approved" }, { returnDocument: 'after' });
+        const dealer = await Dealer.findById(req.params.id);
         if (!dealer) return res.status(404).json({ message: "Dealer not found" });
+
+        if (dealer.status === "Approved") {
+            return res.status(400).json({ message: "Dealer is already approved." });
+        }
+
+        // Check if a User with this email already exists
+        const existingUser = await User.findOne({ email: dealer.email });
+        if (existingUser) {
+            return res.status(400).json({
+                message: "A user with this dealer's email already exists.",
+                error: "DUPLICATE_EMAIL"
+            });
+        }
 
         // Create a User account for the dealer
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -59,10 +102,19 @@ export const approveDealer = async (req, res) => {
             role: "Dealer",
             dealerId: dealer._id
         });
+
         await newUser.save();
+
+        // Update dealer status only after user creation succeeds
+        dealer.status = "Approved";
+        await dealer.save();
 
         res.json(dealer);
     } catch (error) {
-        res.status(400).json({ message: "Failed to approve dealer" });
+        console.error("Dealer approval error:", error);
+        res.status(500).json({
+            message: "Failed to approve dealer",
+            error: error instanceof Error ? error.message : "Inner Server Error"
+        });
     }
 }

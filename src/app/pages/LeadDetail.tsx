@@ -40,6 +40,7 @@ import {
   useDeleteLead
 } from "../hooks/useLeads";
 import { useDealers } from "../hooks/useDealers";
+import { useAuth } from "../context/AuthContext";
 
 interface ActivityLog {
   _id?: string;
@@ -72,6 +73,7 @@ export function LeadDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const { isAdmin, isDistributor, isDealer } = useAuth();
   const { data: lead, isLoading: isLeadLoading } = useLeadDetail(id);
   const { data: dealers = [] } = useDealers();
 
@@ -309,16 +311,18 @@ export function LeadDetail() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-red-400 hover:text-red-600 hover:bg-red-50"
-            onClick={() => setIsDeleteAlertOpen(true)}
-            disabled={actionLoading}
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Delete
-          </Button>
+          {(isAdmin || isDistributor || isDealer) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-red-400 hover:text-red-600 hover:bg-red-50"
+              onClick={() => setIsDeleteAlertOpen(true)}
+              disabled={actionLoading}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </Button>
+          )}
           <div className="flex gap-2">
             <StatusBadge status={lead.rating} />
             <StatusBadge status={lead.status} />
@@ -411,10 +415,17 @@ export function LeadDetail() {
           {/* Lead Details */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-0.5">Lead Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-y-2 gap-x-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 gap-x-6">
               <div>
                 <p className="text-sm text-gray-600 mb-1">Product Interest</p>
                 <p className="text-sm font-medium text-gray-900">{lead.product}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Assigned Dealer</p>
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-blue-500" />
+                  <p className="text-sm font-medium text-gray-900">{lead.dealerId?.companyName || "Not Assigned"}</p>
+                </div>
               </div>
               <div>
                 <p className="text-sm text-gray-600 mb-1">Source</p>
@@ -564,14 +575,16 @@ export function LeadDetail() {
                     <RefreshCw className="w-4 h-4 mr-2" />
                     Change Status
                   </Button>
-                  <Button
-                    className="w-full justify-start"
-                    variant="outline"
-                    onClick={() => setActiveAction("assign")}
-                  >
-                    <User className="w-4 h-4 mr-2" />
-                    Assign Dealer
-                  </Button>
+                    {(isAdmin || isDistributor) && (
+                      <Button
+                        className="w-full justify-start"
+                        variant="outline"
+                        onClick={() => setActiveAction("assign")}
+                      >
+                        <User className="w-4 h-4 mr-2" />
+                        Assign Dealer
+                      </Button>
+                    )}
                   <Button
                     className="w-full justify-start"
                     variant="outline"
@@ -661,6 +674,7 @@ export function LeadDetail() {
                       >
                         <SelectTrigger><SelectValue placeholder="Select a dealer" /></SelectTrigger>
                         <SelectContent>
+                          {isDistributor && <SelectItem value="self">Assign to Myself</SelectItem>}
                           {dealers.filter((d: any) => d.status === "Approved").map((d: any) => (
                             <SelectItem key={d._id} value={d._id}>{d.companyName}</SelectItem>
                           ))}

@@ -1,5 +1,6 @@
 import { Lead } from "../models/lead.model.js";
 import { Customer } from "../models/customer.model.js";
+import { Dealer } from "../models/dealer.model.js";
 
 export const getLeads = async (req, res) => {
     try {
@@ -11,11 +12,23 @@ export const getLeads = async (req, res) => {
                 return res.status(403).json({ message: "Dealer account is missing dealerId linkage." });
             }
             query = { dealerId: user.dealerId };
+        } else if (user.role === "Distributor") {
+            // Find all dealers managed by this distributor
+            const dealers = await Dealer.find({ distributorId: user._id });
+            const dealerIds = dealers.map(d => d._id);
+            // Show leads for their dealers OR leads assigned directly to the distributor
+            query = { 
+                $or: [
+                    { dealerId: { $in: dealerIds } },
+                    { assignedTo: user._id }
+                ]
+            };
         }
 
-        const leads = await Lead.find(query).sort({ createdAt: -1 });
+        const leads = await Lead.find(query).populate("dealerId", "companyName ownerName").sort({ createdAt: -1 });
         res.json(leads);
     } catch (error) {
+        console.error("Fetch leads error:", error);
         res.status(500).json({ message: "Failed to fetch leads" });
     }
 };
@@ -23,7 +36,7 @@ export const getLeads = async (req, res) => {
 export const createLead = async (req, res) => {
     try {
         const user = req.user;
-        const { phone } = req.body;
+        const { phone, dealerId } = req.body;
 
         // Duplicate check
         const existingLead = await Lead.findOne({ phone });
@@ -32,14 +45,42 @@ export const createLead = async (req, res) => {
         }
 
         const leadData = { ...req.body };
+        // Clean up empty strings that could cause CastErrors
+        if (!leadData.dealerId || leadData.dealerId === "") delete leadData.dealerId;
+        if (!leadData.customerId || leadData.customerId === "") delete leadData.customerId;
+        if (!leadData.assignedTo || leadData.assignedTo === "") delete leadData.assignedTo;
+
+        leadData.metadata = {
+            DistributorName: "",
+            DealerName: ""
+        };
 
         if (user.role === "Dealer") {
             leadData.source = "Dealer";
-            if (user.dealerId) {
-                leadData.dealerId = user.dealerId;
+            leadData.dealerId = user.dealerId;
+            leadData.metadata.DealerName = user.name;
+            leadData.assignedTo = user._id; // Auto-assign to self
+        } else if (user.role === "Distributor") {
+            leadData.source = "Web"; 
+            leadData.metadata.DistributorName = user.name;
+            if (dealerId) {
+                const dealer = await Dealer.findOne({ _id: dealerId, distributorId: user._id });
+                if (!dealer) {
+                    return res.status(403).json({ message: "You can only assign leads to your own dealers." });
+                }
+                leadData.metadata.DealerName = dealer.companyName;
+            } else {
+                leadData.assignedTo = user._id;
             }
         } else {
-            leadData.source = "Web";
+            leadData.source = leadData.source || "Web";
+            if (dealerId) {
+                const dealer = await Dealer.findById(dealerId);
+                if (dealer) {
+                    leadData.metadata.DealerName = dealer.companyName;
+                    leadData.metadata.DistributorName = dealer.metadata?.DistributorName;
+                }
+            }
         }
 
         leadData.activityLog = [{
@@ -61,11 +102,18 @@ export const createLead = async (req, res) => {
 export const getLeadById = async (req, res) => {
     try {
         const user = req.user;
-        const lead = await Lead.findById(req.params.id);
+        const lead = await Lead.findById(req.params.id).populate("dealerId", "companyName ownerName");
         if (!lead) return res.status(404).json({ message: "Lead not found" });
 
         if (user.role === "Dealer" && String(lead.dealerId) !== String(user.dealerId)) {
             return res.status(403).json({ message: "Unauthorized access to this lead" });
+        }
+
+        if (user.role === "Distributor") {
+            const dealer = await Dealer.findOne({ _id: lead.dealerId, distributorId: user._id });
+            if (!dealer && String(lead.assignedTo) !== String(user._id)) {
+                return res.status(403).json({ message: "Unauthorized access to this lead" });
+            }
         }
 
         res.json(lead);
@@ -83,6 +131,13 @@ export const updateLead = async (req, res) => {
 
         if (user.role === "Dealer" && String(existingLead.dealerId) !== String(user.dealerId)) {
             return res.status(403).json({ message: "Unauthorized edit attempt" });
+        }
+
+        if (user.role === "Distributor") {
+            const dealer = await Dealer.findOne({ _id: existingLead.dealerId, distributorId: user._id });
+            if (!dealer && String(existingLead.assignedTo) !== String(user._id)) {
+                return res.status(403).json({ message: "Unauthorized edit attempt" });
+            }
         }
 
         const updateData = { ...req.body };
@@ -111,29 +166,71 @@ export const updateLead = async (req, res) => {
 export const assignLead = async (req, res) => {
     try {
         const user = req.user;
-        if (user.role !== "Super Admin") {
-            return res.status(403).json({ message: "Only Super Admins can assign leads." });
+        if (user.role !== "Super Admin" && user.role !== "Distributor") {
+            return res.status(403).json({ message: "Unauthorized to assign leads." });
         }
-
         const { dealerId, dealerName } = req.body;
-        if (!dealerId) {
-            return res.status(400).json({ message: "dealerId is required." });
+        const updateData = {};
+
+        // Role-based validation for assignment
+        if (user.role === "Distributor") {
+            // Distributor assigning to themselves
+            if (!dealerId || dealerId === "self") {
+                 updateData.assignedTo = user._id;
+                 updateData.status = "Assigned";
+                 updateData.$push = {
+                    activityLog: {
+                        action: "Lead Assigned",
+                        note: `Assigned to self (Distributor)`,
+                        performedBy: user.name || "Distributor",
+                        timestamp: new Date(),
+                    }
+                 };
+            } else {
+                // Distributor assigning to a dealer - verify ownership
+                const dealer = await Dealer.findOne({ _id: dealerId, distributorId: user._id });
+                if (!dealer) {
+                    return res.status(403).json({ message: "You can only assign leads to your own dealers." });
+                }
+                updateData.dealerId = dealerId;
+                updateData.metadata = {
+                    DealerName: dealer.companyName,
+                    DistributorName: user.name
+                };
+                updateData.status = "Assigned";
+                updateData.$push = {
+                    activityLog: {
+                        action: "Lead Assigned",
+                        note: `Assigned to dealer: ${dealer.companyName}`,
+                        performedBy: user.name || "Distributor",
+                        timestamp: new Date(),
+                    }
+                };
+            }
+        } else {
+            // Super Admin logic
+            const dealer = await Dealer.findById(dealerId);
+            if (dealer) {
+                updateData.dealerId = dealerId;
+                updateData.metadata = {
+                    DealerName: dealer.companyName,
+                    DistributorName: dealer.metadata?.DistributorName
+                };
+                updateData.status = "Assigned";
+                updateData.$push = {
+                    activityLog: {
+                        action: "Lead Assigned",
+                        note: `Assigned to dealer: ${dealer.companyName}`,
+                        performedBy: user.name || "Super Admin",
+                        timestamp: new Date(),
+                    }
+                };
+            }
         }
 
         const lead = await Lead.findByIdAndUpdate(
             req.params.id,
-            {
-                dealerId,
-                status: "Assigned",
-                $push: {
-                    activityLog: {
-                        action: "Lead Assigned",
-                        note: `Assigned to dealer: ${dealerName || dealerId}`,
-                        performedBy: user.name || "Super Admin",
-                        timestamp: new Date(),
-                    }
-                }
-            },
+            updateData,
             { returnDocument: 'after' }
         );
 
@@ -170,6 +267,15 @@ export const updateLeadStatus = async (req, res) => {
         if (user.role === "Dealer") {
             const existingLead = await Lead.findById(req.params.id);
             if (!existingLead || String(existingLead.dealerId) !== String(user.dealerId)) {
+                return res.status(403).json({ message: "Unauthorized" });
+            }
+        }
+
+        if (user.role === "Distributor") {
+            const existingLead = await Lead.findById(req.params.id);
+            if (!existingLead) return res.status(404).json({ message: "Lead not found" });
+            const dealer = await Dealer.findOne({ _id: existingLead.dealerId, distributorId: user._id });
+            if (!dealer && String(existingLead.assignedTo) !== String(user._id)) {
                 return res.status(403).json({ message: "Unauthorized" });
             }
         }
@@ -283,6 +389,10 @@ export const convertLeadToCustomer = async (req, res) => {
             product: lead.product,
             value: lead.value,
             dealerId: lead.dealerId,
+            metadata: {
+                DealerName: lead.metadata?.DealerName,
+                DistributorName: lead.metadata?.DistributorName
+            },
             leadId: lead._id,
             notes: lead.notes,
         });
@@ -313,6 +423,13 @@ export const deleteLead = async (req, res) => {
 
         if (user.role === "Dealer" && String(lead.dealerId) !== String(user.dealerId)) {
             return res.status(403).json({ message: "Unauthorized deletion attempt" });
+        }
+
+        if (user.role === "Distributor") {
+            const dealer = await Dealer.findOne({ _id: lead.dealerId, distributorId: user._id });
+            if (!dealer && String(lead.assignedTo) !== String(user._id)) {
+                return res.status(403).json({ message: "Unauthorized deletion attempt" });
+            }
         }
 
         await Lead.findByIdAndDelete(req.params.id);

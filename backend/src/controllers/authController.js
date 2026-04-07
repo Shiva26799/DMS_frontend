@@ -40,7 +40,10 @@ export const login = async (req, res) => {
         const token = jwt.sign(
             { userId: user._id, role: user.role },
             privateKey,
-            { algorithm: "RS256", expiresIn: "1d" }
+            { 
+                algorithm: process.env.JWT_ALGO, 
+                expiresIn: process.env.JWT_EXPIRATION 
+            }
         );
 
         res.json({

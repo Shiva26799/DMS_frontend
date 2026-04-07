@@ -74,10 +74,10 @@ export function DealerProvider({ children }: { children: ReactNode }) {
     try {
       const res = await apiClient.put(`/dealers/${id}/approve`, { password });
       const mappedDealer = {
-         ...res.data,
-         id: res.data._id,
-         name: res.data.companyName,
-         status: res.data.status || "Approved"
+        ...res.data,
+        id: res.data._id,
+        name: res.data.companyName,
+        status: res.data.status || "Approved"
       };
       setDealers((prev) => prev.map((d) => (d.id === id ? { ...d, ...mappedDealer } : d)));
     } catch (error) {

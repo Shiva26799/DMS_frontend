@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from "react";
-import axios from "axios";
+import { apiClient } from "../api/client";
+import { useAuth } from "./AuthContext";
 import { Dealer, Product } from "../data/mockData";
 
 // Using unified WarrantyClaim interface matching the backend
@@ -36,23 +37,23 @@ interface WarrantyContextType {
 
 const WarrantyContext = createContext<WarrantyContextType | undefined>(undefined);
 
-const API_URL = "http://localhost:5000/api/warranty";
-
 export function WarrantyProvider({ children }: { children: ReactNode }) {
   const [claims, setClaims] = useState<WarrantyClaim[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const { token } = useAuth();
 
   const fetchClaims = useCallback(async () => {
+    if (!token) return;
     try {
       setIsLoading(true);
-      const response = await axios.get(API_URL);
+      const response = await apiClient.get("/warranty");
       setClaims(response.data);
     } catch (error) {
       console.error("Failed to fetch claims:", error);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     fetchClaims();
@@ -60,7 +61,7 @@ export function WarrantyProvider({ children }: { children: ReactNode }) {
 
   const getClaim = async (id: string) => {
     try {
-      const response = await axios.get(`${API_URL}/${id}`);
+      const response = await apiClient.get(`/warranty/${id}`);
       return response.data;
     } catch (error) {
       console.error("Failed to fetch claim detail:", error);
@@ -69,14 +70,14 @@ export function WarrantyProvider({ children }: { children: ReactNode }) {
   };
 
   const createClaim = async (formData: any) => {
-    const response = await axios.post(API_URL, formData);
+    const response = await apiClient.post("/warranty", formData);
     const newClaim = response.data;
     setClaims((prev) => [newClaim, ...prev]);
     return newClaim;
   };
 
   const updateClaimStatus = async (id: string, data: { status: string; note?: string; extraData?: any }) => {
-    const response = await axios.patch(`${API_URL}/${id}/status`, data);
+    const response = await apiClient.patch(`/warranty/${id}/status`, data);
     const updatedClaim = response.data;
     setClaims((prev) => prev.map((c) => (c._id === id ? updatedClaim : c)));
     return updatedClaim;
@@ -85,7 +86,7 @@ export function WarrantyProvider({ children }: { children: ReactNode }) {
   const uploadMedia = async (id: string, file: File) => {
     const formData = new FormData();
     formData.append("media", file);
-    const response = await axios.post(`${API_URL}/${id}/media`, formData, {
+    const response = await apiClient.post(`/warranty/${id}/media`, formData, {
       headers: { "Content-Type": "multipart/form-data" }
     });
     const updatedClaim = response.data;

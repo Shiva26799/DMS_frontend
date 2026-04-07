@@ -50,9 +50,26 @@ export const uploadCompanyLogo = async (req, res) => {
 // USERS MANAGEMENT
 export const getUsers = async (req, res) => {
     try {
-        const users = await User.find().select("-password");
+        const user = req.user;
+        let query = {};
+
+        if (user.role === "Distributor") {
+            const dealers = await Dealer.find({ distributorId: user._id });
+            const dealerIds = dealers.map(d => d._id);
+            query = {
+                $or: [
+                    { _id: user._id }, // Show themselves
+                    { dealerId: { $in: dealerIds } } // Show their dealer users
+                ]
+            };
+        } else if (user.role === "Dealer") {
+            query = { _id: user._id };
+        }
+
+        const users = await User.find(query).select("-password");
         res.json(users);
     } catch (error) {
+        console.error("Fetch users error:", error);
         res.status(500).json({ message: "Failed to fetch users" });
     }
 };
@@ -61,6 +78,19 @@ export const createUser = async (req, res) => {
     try {
         const userData = { ...req.body };
         if (userData.dealerId === "") delete userData.dealerId;
+
+        // Check for existing user or dealer with this email
+        const [existingUser, existingDealer] = await Promise.all([
+            User.findOne({ email: userData.email }),
+            Dealer.findOne({ email: userData.email })
+        ]);
+
+        if (existingUser || existingDealer) {
+            return res.status(400).json({ 
+                message: "A user or dealer with this email already exists.",
+                error: "DUPLICATE_EMAIL"
+            });
+        }
 
         const pwd = userData.password || "password123";
         const hashedPassword = await bcrypt.hash(pwd, 10);
