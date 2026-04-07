@@ -8,8 +8,8 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Path to the private key (moved to root for security or as per project structure)
-const PRIVATE_KEY_PATH = path.join(__dirname, "../../private_key.pem");
+// Path to the private key (using process.cwd() for Vercel compatibility)
+const PRIVATE_KEY_PATH = path.join(process.cwd(), "backend", "private_key.pem");
 
 export const login = async (req, res) => {
     try {
@@ -56,8 +56,16 @@ export const login = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error("Login controller error:", error);
-        res.status(500).json({ message: "Server error", error: error instanceof Error ? error.message : error });
+        console.error("Login controller error details:", {
+            message: error.message,
+            stack: error.stack,
+            path: PRIVATE_KEY_PATH
+        });
+        res.status(500).json({ 
+            message: "Server error", 
+            error: error instanceof Error ? error.message : "Unknown error",
+            details: process.env.NODE_ENV === "development" ? error.stack : undefined
+        });
     }
 };
 
