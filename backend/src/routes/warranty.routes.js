@@ -1,4 +1,5 @@
 import express from "express";
+import { checkJWTToken } from "../middleware/index.js";
 import { 
     createClaim, 
     getClaims, 
@@ -9,6 +10,9 @@ import {
 import { uploadWarrantyMedia } from "../middleware/s3-upload.middleware.js";
 
 const router = express.Router();
+
+// Require authentication for all warranty routes
+router.use(checkJWTToken);
 
 router.post("/", createClaim);
 router.get("/", getClaims);

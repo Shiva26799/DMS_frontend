@@ -18,10 +18,23 @@ import { fileURLToPath } from "url";
 
 import morgan from "morgan";
 
+import connectDB from "./db.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// Middleware to ensure DB is connected before handling any requests (important for Serverless)
+app.use(async (req, res, next) => {
+    try {
+        await connectDB();
+        next();
+    } catch (err) {
+        console.error("Database connection middleware error:", err);
+        res.status(500).json({ message: "Database connection failed", error: err.message });
+    }
+});
 
 // Middleware
 app.use(cors());
@@ -40,25 +53,9 @@ app.use("/api/warehouses", warehouseRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/warranty", warrantyRoutes);
 
-// Database connection
-const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (MONGODB_URI) {
-    mongoose
-        .connect(MONGODB_URI)
-        .then(() => {
-            console.log(`Connected to MongoDB in ${process.env.NODE_ENV || "development"} mode`);
-        })
-        .catch((err) => {
-            console.error("MongoDB connection error:", err);
-        });
-} else {
-    console.warn("MONGODB_URI is not defined in environment variables");
-}
-
 // Only listen if not being imported as a module (e.g., direct node execution)
 if (import.meta.url === `file://${fileURLToPath(import.meta.url)}` && !process.env.VERCEL) {
+    const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
     });

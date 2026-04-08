@@ -105,7 +105,7 @@ export const getLeadById = async (req, res) => {
         const lead = await Lead.findById(req.params.id).populate("dealerId", "companyName ownerName");
         if (!lead) return res.status(404).json({ message: "Lead not found" });
 
-        if (user.role === "Dealer" && String(lead.dealerId) !== String(user.dealerId)) {
+        if (user.role === "Dealer" && String(lead.dealerId?._id || lead.dealerId) !== String(user.dealerId)) {
             return res.status(403).json({ message: "Unauthorized access to this lead" });
         }
 
