@@ -6,6 +6,7 @@ interface User {
     name: string;
     email: string;
     role: string;
+    dealerId?: string;
 }
 
 interface AuthContextType {
@@ -15,6 +16,7 @@ interface AuthContextType {
     logout: () => void;
     loading: boolean;
     isAdmin: boolean;
+    isSuperAdmin: boolean;
     isDistributor: boolean;
     isDealer: boolean;
     role: string | null;
@@ -80,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRole(null);
     };
 
+    const isSuperAdmin = role === "Super Admin";
     const isAdmin = role === "Super Admin" || role === "Admin";
     const isDistributor = role === "Distributor";
     const isDealer = role === "Dealer";
@@ -95,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             logout,
             loading: isInitialLoading,
             isAdmin,
+            isSuperAdmin,
             isDistributor,
             isDealer,
             role

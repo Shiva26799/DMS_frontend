@@ -64,6 +64,13 @@ const orderSchema = new mongoose.Schema(
                 performedBy: { type: String },
                 timestamp: { type: Date, default: Date.now }
             }
+        ],
+        additionalDocuments: [
+            {
+                name: { type: String },
+                url: { type: String },
+                uploadedAt: { type: Date, default: Date.now }
+            }
         ]
     },
     { timestamps: true }

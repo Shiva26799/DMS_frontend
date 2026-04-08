@@ -22,6 +22,10 @@ interface OrderContextType {
   registerWarranty: (orderId: string, formData: FormData) => Promise<Order>;
   updateOrderStatus: (orderId: string, status: string, progress: number) => Promise<Order>;
   cancelOrder: (orderId: string) => Promise<Order>;
+  uploadAdditionalDocument: (orderId: string, file: File, name: string) => Promise<Order>;
+  deleteAdditionalDocument: (orderId: string, name: string) => Promise<Order>;
+  deletePrimaryDocument: (orderId: string, type: string) => Promise<Order>;
+  requestDocument: (orderId: string, name: string) => Promise<Order>;
   refreshOrders: () => Promise<void>;
 }
 
@@ -314,6 +318,59 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const uploadAdditionalDocument = async (orderId: string, file: File, name: string) => {
+    try {
+      const formData = new FormData();
+      formData.append("document", file);
+      formData.append("name", name);
+      const res = await apiClient.post(`/orders/${orderId}/additional-docs`, formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      const updatedOrder = mapOrder(res.data);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? updatedOrder : o)));
+      return updatedOrder;
+    } catch (error) {
+      console.error("Failed to upload additional document:", error);
+      throw error;
+    }
+  };
+
+  const deleteAdditionalDocument = async (orderId: string, name: string) => {
+    try {
+      const res = await apiClient.delete(`/orders/${orderId}/additional-docs/${encodeURIComponent(name)}`);
+      const updatedOrder = mapOrder(res.data);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? updatedOrder : o)));
+      return updatedOrder;
+    } catch (error) {
+      console.error("Failed to delete additional document:", error);
+      throw error;
+    }
+  };
+
+  const deletePrimaryDocument = async (orderId: string, type: string) => {
+    try {
+      const res = await apiClient.delete(`/orders/${orderId}/primary-docs/${type}`);
+      const updatedOrder = mapOrder(res.data);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? updatedOrder : o)));
+      return updatedOrder;
+    } catch (error) {
+      console.error("Failed to delete primary document:", error);
+      throw error;
+    }
+  };
+
+  const requestDocument = async (orderId: string, name: string) => {
+    try {
+      const res = await apiClient.patch(`/orders/${orderId}/request-doc`, { name });
+      const updatedOrder = mapOrder(res.data);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? updatedOrder : o)));
+      return updatedOrder;
+    } catch (error) {
+      console.error("Failed to request document:", error);
+      throw error;
+    }
+  };
+
   return (
     <OrderContext.Provider value={{
       orders,
@@ -333,6 +390,10 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       registerWarranty,
       updateOrderStatus,
       cancelOrder,
+      uploadAdditionalDocument,
+      deleteAdditionalDocument,
+      deletePrimaryDocument,
+      requestDocument,
       refreshOrders: fetchOrders
     }}>
       {children}

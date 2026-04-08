@@ -45,10 +45,7 @@ const navigation: NavItem[] = [
 
 export function Sidebar() {
   const location = useLocation();
-  const { user, role: contextRole } = useAuth();
-
-  // Normalize role: treat "Admin" as "Super Admin" for backward compatibility
-  const role = contextRole === "Admin" ? "Super Admin" : contextRole;
+  const { user, isSuperAdmin, isDistributor, isDealer, role } = useAuth();
 
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
     "Products & Inventory"
@@ -68,21 +65,28 @@ export function Sidebar() {
   // Filter top-level items
   const filteredNavigation = navigation
     .filter((item) => {
-      // If no roles specified, it's public
       if (!item.allowedRoles) return true;
-      // If role is missing, don't show any protected items
       if (!role) return false;
-      // Show item if role matches
+      
+      // Standardize role matching using the new methodology flags where possible
+      if (item.name === "Settings") return isSuperAdmin;
+      if (item.name === "Dealer Management") return isSuperAdmin || isDistributor;
+      
       return item.allowedRoles.includes(role);
     })
     .map((item) => {
-      // If item has a submenu, filter that too
       if (item.submenu) {
         return {
           ...item,
-          submenu: item.submenu.filter(
-            (sub) => !sub.allowedRoles || (role && sub.allowedRoles.includes(role))
-          ),
+          submenu: item.submenu.filter((sub) => {
+            if (!sub.allowedRoles) return true;
+            if (!role) return false;
+            
+            // Specific overrides for inventory/products if needed
+            if (sub.name === "Inventory") return isSuperAdmin || isDistributor;
+            
+            return sub.allowedRoles.includes(role);
+          }),
         };
       }
       return item;

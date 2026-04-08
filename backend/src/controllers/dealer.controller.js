@@ -13,7 +13,9 @@ export const getDealers = async (req, res) => {
             query._id = user.dealerId;
         }
 
-        const dealers = await Dealer.find(query).sort({ companyName: 1 });
+        const dealers = await Dealer.find(query)
+            .populate("distributorId", "name")
+            .sort({ companyName: 1 });
         res.json(dealers);
     } catch (error) {
         console.error("Fetch dealers error:", error);
@@ -42,6 +44,12 @@ export const onboardDealer = async (req, res) => {
 
         if (req.user.role === "Distributor") {
             dealerData.distributorId = req.user._id;
+        } else if (req.user.role === "Super Admin" && dealerData.distributorId) {
+            // If Admin is onboarding and selected a distributor, try to get their name
+            const dist = await User.findById(dealerData.distributorId);
+            if (dist) {
+                dealerData.metadata.DistributorName = dist.name;
+            }
         }
 
         // Check for existing dealer or user with this email
@@ -51,7 +59,7 @@ export const onboardDealer = async (req, res) => {
         ]);
 
         if (existingDealer || existingUser) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 message: "A user with this email already exists.",
                 error: "DUPLICATE_EMAIL"
             });
@@ -118,3 +126,18 @@ export const approveDealer = async (req, res) => {
         });
     }
 }
+
+export const updateDealer = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        const dealer = await Dealer.findByIdAndUpdate(id, updates, { new: true });
+        if (!dealer) return res.status(404).json({ message: "Dealer not found" });
+
+        res.json(dealer);
+    } catch (error) {
+        console.error("Update dealer error:", error);
+        res.status(500).json({ message: "Failed to update dealer" });
+    }
+};

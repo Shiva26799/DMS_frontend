@@ -56,16 +56,8 @@ export const login = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error("Login controller error details:", {
-            message: error.message,
-            stack: error.stack,
-            path: PRIVATE_KEY_PATH
-        });
-        res.status(500).json({ 
-            message: "Server error", 
-            error: error instanceof Error ? error.message : "Unknown error",
-            details: process.env.NODE_ENV === "development" ? error.stack : undefined
-        });
+        console.error("Login controller error:", error);
+        res.status(500).json({ message: "Server error", error: error instanceof Error ? error.message : error });
     }
 };
 

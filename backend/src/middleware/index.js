@@ -31,6 +31,7 @@ export const checkJWTToken = async (req, res, next) => {
         }
 
         req.user = user;
+        req.role = user.role; // For authorize middleware
         next();
     } catch (error) {
         console.error("JWT Verification Error:", error.message);

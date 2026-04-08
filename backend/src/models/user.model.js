@@ -10,7 +10,11 @@ const userSchema = new mongoose.Schema(
         lastLogin: { type: Date },
         dealerId: { type: mongoose.Schema.Types.ObjectId, ref: "Dealer" },
     },
-    { timestamps: true }
+    { 
+        timestamps: true,
+        toJSON: { virtuals: true },
+        toObject: { virtuals: true }
+    }
 );
 
 export const User = mongoose.models.User || mongoose.model("User", userSchema);

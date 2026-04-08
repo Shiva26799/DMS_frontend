@@ -152,6 +152,11 @@ export interface Order {
     performedBy: string;
     timestamp: string;
   }>;
+  additionalDocuments?: Array<{
+    name: string;
+    url: string;
+    uploadedAt: string;
+  }>;
 }
 
 export interface WarrantyClaim {

@@ -24,7 +24,7 @@ export const createOrder = async (req, res) => {
             const price = Number(item.price) || product.price;
             const quantity = Number(item.quantity) || 1;
             totalValue += price * quantity;
-            
+
             itemizedProducts.push({
                 productId: item.productId,
                 quantity,
@@ -56,7 +56,7 @@ export const createOrder = async (req, res) => {
         const populatedOrder = await Order.findById(newOrder._id)
             .populate("dealerId", "companyName ownerName code")
             .populate("products.productId", "name price sku");
-            
+
         res.status(201).json(populatedOrder);
     } catch (error) {
         console.error("Error creating order:", error);
@@ -297,7 +297,7 @@ export const uploadDealerInvoice = async (req, res) => {
 export const updateDeliveryStatus = async (req, res) => {
     try {
         const { transportName, trackingId, estimatedDeliveryDate } = req.body;
-        
+
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
@@ -308,7 +308,7 @@ export const updateDeliveryStatus = async (req, res) => {
         };
 
         order.deliveryStatus = "Dispatched";
-        
+
         // Progress increases slightly to reflect dispatch, but stays in Delivery circle
         order.stageProgress = 80;
 
@@ -332,7 +332,7 @@ export const markOrderAsReceived = async (req, res) => {
         if (!order) return res.status(404).json({ message: "Order not found" });
 
         order.deliveryStatus = "Delivered";
-        
+
         // Advancing to the next circle: Installation
         order.currentStage = "Installation";
         order.stageProgress = 90;
@@ -461,5 +461,162 @@ export const updateOrderStatus = async (req, res) => {
         res.json(order);
     } catch (error) {
         res.status(500).json({ message: "Error overriding status", error: error.message });
+    }
+};
+
+// Upload Additional Document
+export const uploadAdditionalDocument = async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!req.file) {
+            return res.status(400).json({ message: "No file uploaded" });
+        }
+
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        if (!order.additionalDocuments) {
+            order.additionalDocuments = [];
+        }
+
+        const existingIndex = order.additionalDocuments.findIndex(d => d.name === name);
+        if (existingIndex !== -1) {
+            order.additionalDocuments[existingIndex] = {
+                name,
+                url: req.file.location,
+                uploadedAt: new Date()
+            };
+            order.markModified("additionalDocuments");
+            order.activityLog.push({
+                action: "Additional Document Updated",
+                note: `Document "${name}" updated by ${req.user?.name || "User"}`,
+                performedBy: req.user?.name || "User"
+            });
+        } else {
+            order.additionalDocuments.push({
+                name: name || req.file.originalname,
+                url: req.file.location,
+                uploadedAt: new Date()
+            });
+            order.activityLog.push({
+                action: "Additional Document Uploaded",
+                note: `Document "${name || req.file.originalname}" uploaded by ${req.user?.name || "User"}`,
+                performedBy: req.user?.name || "User"
+            });
+        }
+
+        await order.save();
+        res.json(order);
+    } catch (error) {
+        console.error("Additional document upload error:", error);
+        res.status(500).json({ message: "Error uploading additional document", error: error.message });
+    }
+};
+
+// Delete Additional Document
+export const deleteAdditionalDocument = async (req, res) => {
+    try {
+        const { name } = req.params;
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        if (!order.additionalDocuments) {
+            return res.status(400).json({ message: "No additional documents found" });
+        }
+
+        const docIndex = order.additionalDocuments.findIndex(d => d.name === name);
+        if (docIndex === -1) {
+            return res.status(404).json({ message: "Document not found" });
+        }
+
+        order.additionalDocuments.splice(docIndex, 1);
+        order.markModified("additionalDocuments");
+
+        order.activityLog.push({
+            action: "Additional Document Deleted",
+            note: `Document "${name}" deleted by ${req.user?.name || "User"}`,
+            performedBy: req.user?.name || "User"
+        });
+
+        await order.save();
+        res.json(order);
+    } catch (error) {
+        console.error("Delete additional document error:", error);
+        res.status(500).json({ message: "Error deleting document", error: error.message });
+    }
+};
+
+// Delete Primary Document
+export const deletePrimaryDocument = async (req, res) => {
+    try {
+        const { type } = req.params; // po, payment, lovolInvoice, dealerInvoice
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        const fieldMap = {
+            po: "poDocument",
+            payment: "paymentDocument",
+            lovolInvoice: "lovolInvoiceDocument",
+            dealerInvoice: "dealerInvoiceDocument"
+        };
+
+        const fieldName = fieldMap[type];
+        if (!fieldName || !order[fieldName]) {
+            return res.status(400).json({ message: "Invalid document type or document not found" });
+        }
+
+        const docName = type.toUpperCase();
+        order[fieldName] = undefined;
+
+        order.activityLog.push({
+            action: `${docName} Deleted`,
+            note: `${docName} removed by ${req.user?.name || "User"}`,
+            performedBy: req.user?.name || "User"
+        });
+
+        await order.save();
+        res.json(order);
+    } catch (error) {
+        console.error("Delete primary document error:", error);
+        res.status(500).json({ message: "Error deleting document", error: error.message });
+    }
+};
+
+// Request Document from Dealer
+export const requestDocument = async (req, res) => {
+    try {
+        const { name } = req.body;
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        // Add to additionalDocuments as a placeholder if name provided
+        if (name) {
+            if (!order.additionalDocuments) order.additionalDocuments = [];
+            order.additionalDocuments.push({
+                name,
+                url: null, // Placeholder
+                uploadedAt: new Date()
+            });
+        }
+
+        order.activityLog.push({
+            action: "Document Requested",
+            note: `Administrator (${req.user?.name || "Admin"}) requested document: ${name || "Additional Documentation"}`,
+            performedBy: req.user?.name || "Admin"
+        });
+
+        await order.save();
+        res.json(order);
+    } catch (error) {
+        console.error("Request document error:", error);
+        res.status(500).json({ message: "Error requesting document", error: error.message });
     }
 };

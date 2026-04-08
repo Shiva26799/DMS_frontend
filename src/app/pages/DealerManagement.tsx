@@ -133,15 +133,8 @@ export function DealerManagement() {
     }
   };
 
-  const roleFilteredDealers = dealers.filter((dealer: Dealer) => {
-    if (isDistributor) {
-      return dealer.distributorId === user?.id;
-    }
-    return true;
-  });
-
   const filteredDealers = useMemo(() => {
-    return roleFilteredDealers.filter((dealer: Dealer) => {
+    return dealers.filter((dealer: Dealer) => {
       const status = (dealer.status || "Active").toLowerCase();
       const matchesStatus = filterStatus === "all" || status === filterStatus;
       const matchesRegion = filterRegion === "all" || (dealer.region || "").toLowerCase() === filterRegion.toLowerCase();
@@ -157,7 +150,7 @@ export function DealerManagement() {
       const matchesSearch = name.includes(search) || code.includes(search);
       return matchesStatus && matchesRegion && matchesDistributor && matchesSearch;
     });
-  }, [roleFilteredDealers, filterStatus, filterRegion, filterDistributor, debouncedSearchQuery]);
+  }, [dealers, filterStatus, filterRegion, filterDistributor, debouncedSearchQuery]);
 
   const totalDealers = dealers.length;
   const activeDealersCount = dealers.filter((d: Dealer) => d.status === "Approved").length;
@@ -427,7 +420,7 @@ export function DealerManagement() {
             <Skeleton className="h-8 w-24 mt-1" />
           ) : (
             <p className="text-2xl font-bold text-gray-900 mt-1">
-              ₹{(totalCreditLimit / 10000000).toFixed(1) || "0.0"}Cr
+              ₹{Number(totalCreditLimit || 0).toLocaleString('en-IN')}
             </p>
           )}
         </Card>
@@ -437,7 +430,7 @@ export function DealerManagement() {
             <Skeleton className="h-8 w-24 mt-1" />
           ) : (
             <p className="text-2xl font-bold text-orange-600 mt-1">
-              ₹{(totalOutstanding / 10000000).toFixed(1) || "0.0"}Cr
+              ₹{Number(totalOutstanding || 0).toLocaleString('en-IN')}
             </p>
           )}
         </Card>
@@ -526,7 +519,7 @@ export function DealerManagement() {
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                   Region
                 </th>
-                {isAdmin && (
+                {(isAdmin || isDistributor) && (
                   <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                     Distributor
                   </th>
@@ -574,12 +567,7 @@ export function DealerManagement() {
                   const outstandingAmount = Number(dealer.outstandingAmount) || 0;
                   const creditUtilization = creditLimit > 0 ? (outstandingAmount / creditLimit) * 100 : 0;
 
-                  // Extract distributor name securely
-                  const distId = typeof dealer.distributorId === 'object'
-                    ? (dealer.distributorId as any)?._id
-                    : dealer.distributorId;
-                  const distObj = distributors?.find((d: any) => d._id === distId);
-                  const distName = distObj?.name || (dealer as any).distributorId?.name || dealer.distributorName || "-";
+                  const distName = dealer.distributorName || "Direct / None";
 
                   return (
                     <tr key={dealer.id} className="hover:bg-gray-50">
@@ -599,19 +587,19 @@ export function DealerManagement() {
                       <td className="px-6 py-4 text-sm text-gray-600">
                         {dealer.region}
                       </td>
-                      {isAdmin && (
+                      {(isAdmin || isDistributor) && (
                         <td className="px-6 py-4 text-sm text-gray-600">
                           {distName}
                         </td>
                       )}
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                        ₹{(creditLimit / 100000).toFixed(1)}L
+                        ₹{Number(creditLimit || 0).toLocaleString('en-IN')}
                       </td>
                       <td className="px-6 py-4">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <p className="text-sm font-medium text-gray-900">
-                              ₹{(outstandingAmount / 100000).toFixed(1)}L
+                              ₹{Number(outstandingAmount || 0).toLocaleString('en-IN')}
                             </p>
                             {creditUtilization > 90 && (
                               <AlertTriangle className="w-4 h-4 text-red-500" />

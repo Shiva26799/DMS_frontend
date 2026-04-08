@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from "react";
 import { Dealer } from "../data/mockData";
 import { apiClient } from "../api/client";
 import { useAuth } from "./AuthContext";
@@ -10,14 +10,15 @@ interface DealerContextType {
   approveDealer: (id: string, password: string) => Promise<void>;
   isLoading: boolean;
   refreshDealers: () => Promise<void>;
+  updateDealer: (id: string, updates: any) => Promise<void>;
 }
 
 const DealerContext = createContext<DealerContextType | undefined>(undefined);
 
 export function DealerProvider({ children }: { children: ReactNode }) {
-  const [dealers, setDealers] = useState<Dealer[]>([]);
+  const [allDealers, setAllDealers] = useState<Dealer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { token } = useAuth();
+  const { token, user, isDistributor, isDealer } = useAuth();
 
   const fetchDealers = async () => {
     if (!token) return;
@@ -29,12 +30,17 @@ export function DealerProvider({ children }: { children: ReactNode }) {
         ...d,
         id: d._id,
         name: d.companyName,
+        phone: d.contact || "",
+        email: d.email || "",
+        contactPerson: d.ownerName || "",
+        joinedDate: d.createdAt ? new Date(d.createdAt).toISOString().split("T")[0] : "",
+        distributorName: d.metadata?.DistributorName || d.distributorId?.name || "Direct / None",
         performance: d.performanceScore || 0,
         city: d.address || "", // Assuming address contains city for now or fallback
         code: d.code || d._id.substring(d._id.length - 6).toUpperCase(), // Fallback code if not present
         status: d.status || "Pending", // Preserve exact status from backend
       }));
-      setDealers(mappedDealers);
+      setAllDealers(mappedDealers);
     } catch (error) {
       console.error("Failed to fetch dealers:", error);
     } finally {
@@ -46,6 +52,10 @@ export function DealerProvider({ children }: { children: ReactNode }) {
     fetchDealers();
   }, [token]);
 
+  // The backend already filters dealers based on roles (Distributor/Dealer).
+  // So we can simply use the returned list 'allDealers'.
+  const dealers = allDealers;
+
   const addDealer = async (dealerData: any) => {
     try {
       const res = await apiClient.post("/dealers/onboard", dealerData);
@@ -54,12 +64,17 @@ export function DealerProvider({ children }: { children: ReactNode }) {
         ...d,
         id: d._id,
         name: d.companyName,
+        phone: d.contact || "",
+        email: d.email || "",
+        contactPerson: d.ownerName || "",
+        joinedDate: d.createdAt ? new Date(d.createdAt).toISOString().split("T")[0] : "",
+        distributorName: d.metadata?.DistributorName || d.distributorId?.name || "Direct / None",
         performance: d.performanceScore || 0,
         city: d.address || "",
         code: d.code || d._id.substring(d._id.length - 6).toUpperCase(),
         status: d.status || "Pending",
       };
-      setDealers((prev) => [newDealer, ...prev]);
+      setAllDealers((prev) => [newDealer, ...prev]);
     } catch (error) {
       console.error("Failed to add dealer:", error);
       throw error;
@@ -77,17 +92,32 @@ export function DealerProvider({ children }: { children: ReactNode }) {
         ...res.data,
         id: res.data._id,
         name: res.data.companyName,
+        phone: res.data.contact || "",
+        email: res.data.email || "",
+        contactPerson: res.data.ownerName || "",
+        joinedDate: res.data.createdAt ? new Date(res.data.createdAt).toISOString().split("T")[0] : "",
+        distributorName: res.data.metadata?.DistributorName || res.data.distributorId?.name || "Direct / None",
         status: res.data.status || "Approved"
       };
-      setDealers((prev) => prev.map((d) => (d.id === id ? { ...d, ...mappedDealer } : d)));
+      setAllDealers((prev) => prev.map((d) => (d.id === id ? { ...d, ...mappedDealer } : d)));
     } catch (error) {
       console.error("Failed to approve dealer:", error);
       throw error;
     }
   };
 
+  const updateDealer = async (id: string, updates: any) => {
+    try {
+      const res = await apiClient.patch(`/dealers/${id}`, updates);
+      setAllDealers((prev) => prev.map((d) => (d.id === id ? { ...d, ...res.data, id: res.data._id } : d)));
+    } catch (error) {
+      console.error("Failed to update dealer:", error);
+      throw error;
+    }
+  };
+
   return (
-    <DealerContext.Provider value={{ dealers, addDealer, getDealer, approveDealer, isLoading, refreshDealers: fetchDealers }}>
+    <DealerContext.Provider value={{ dealers, addDealer, getDealer, approveDealer, updateDealer, isLoading, refreshDealers: fetchDealers }}>
       {children}
     </DealerContext.Provider>
   );

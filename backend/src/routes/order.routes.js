@@ -16,7 +16,11 @@ import {
     markInstallationComplete,
     registerWarranty,
     cancelOrder,
-    updateOrderStatus
+    updateOrderStatus,
+    uploadAdditionalDocument,
+    deleteAdditionalDocument,
+    deletePrimaryDocument,
+    requestDocument
 } from "../controllers/order.controller.js";
 
 const router = express.Router();
@@ -44,5 +48,9 @@ router.patch("/:id/complete-installation", markInstallationComplete);
 router.patch("/:id/register-warranty", uploadOrderDocument.single("warrantyDocument"), registerWarranty);
 router.patch("/:id/cancel", cancelOrder);
 router.patch("/:id/status", updateOrderStatus);
+router.post("/:id/additional-docs", uploadOrderDocument.single("document"), uploadAdditionalDocument);
+router.delete("/:id/additional-docs/:name", deleteAdditionalDocument);
+router.delete("/:id/primary-docs/:type", deletePrimaryDocument);
+router.patch("/:id/request-doc", requestDocument);
 
 export default router;

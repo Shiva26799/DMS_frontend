@@ -1,6 +1,6 @@
 import { useParams, Link } from "react-router";
-import { useState, useEffect } from "react";
-import { ArrowLeft, FileText, Upload, CheckCircle, Clock, Eye, Download } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { ArrowLeft, FileText, Upload, CheckCircle, Clock, Eye, Download, Trash2, RefreshCw, ClipboardList, Truck, Wrench, ShieldCheck } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
@@ -15,16 +15,19 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "../components/ui/dialog";
 
 import { Skeleton } from "../components/ui/skeleton";
+import { toast } from "sonner";
 
 export function OrderDetail() {
   const { id } = useParams();
-  const { 
-    getOrder, 
-    uploadPODocument, 
-    uploadPaymentDocument, 
+  const {
+    getOrder,
+    uploadPODocument,
+    uploadPaymentDocument,
     approveOrder,
     finalizeOrderApproval,
     uploadLovolInvoice,
@@ -34,13 +37,17 @@ export function OrderDetail() {
     markInstallationComplete,
     registerWarranty,
     updateOrderStatus,
-    cancelOrder
+    cancelOrder,
+    uploadAdditionalDocument,
+    deleteAdditionalDocument,
+    deletePrimaryDocument,
+    requestDocument
   } = useOrders();
   const { getDealer } = useDealers();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Delivery form state
@@ -75,9 +82,16 @@ export function OrderDetail() {
       // For now, let's just stick with defaults or what's in the order
     }
   }, [order]);
-  
+
   // Document Viewing State
   const [viewingDoc, setViewingDoc] = useState<{ url: string; title: string } | null>(null);
+  const [isNamingDialogOpen, setIsNamingDialogOpen] = useState(false);
+  const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
+  const [newDocName, setNewDocName] = useState("");
+  const [requestedDocName, setRequestedDocName] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [isStatusChangeDialogOpen, setIsStatusChangeDialogOpen] = useState(false);
+  const [jumpTargetStage, setJumpTargetStage] = useState<string>("");
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -96,7 +110,7 @@ export function OrderDetail() {
     if (!order || !order.id) return;
 
     try {
-      setIsUploading(true);
+      setUploadingDoc(type);
       let updatedOrder;
       if (type === "PO") {
         updatedOrder = await uploadPODocument(order.id, file);
@@ -108,10 +122,11 @@ export function OrderDetail() {
         updatedOrder = await uploadDealerInvoice(order.id, file);
       }
       setOrder(updatedOrder);
+      toast.success("Document Updated Successfully");
     } catch (error) {
       console.error(`Failed to upload ${type}:`, error);
     } finally {
-      setIsUploading(false);
+      setUploadingDoc(null);
     }
   };
 
@@ -149,7 +164,7 @@ export function OrderDetail() {
       alert("Please fill in all delivery details");
       return;
     }
-    
+
     try {
       setIsProcessing(true);
       const updatedOrder = await updateDeliveryStatus(order.id, {
@@ -244,7 +259,7 @@ export function OrderDetail() {
   const handleStageJump = async (stageName: string, progress: number) => {
     if (!order || !order.id) return;
     if (order.currentStage === stageName) return;
-    
+
     if (!window.confirm(`Are you sure you want to jump to stage: ${stageName}?`)) {
       return;
     }
@@ -260,6 +275,96 @@ export function OrderDetail() {
       setIsProcessing(false);
     }
   };
+
+  const [isReuploading, setIsReuploading] = useState(false);
+  const reuploadNameRef = useRef("");
+
+  const handleReupload = (name: string) => {
+    reuploadNameRef.current = name;
+    setIsReuploading(true);
+    document.getElementById("reupload-input")?.click();
+  };
+
+  const handleAdditionalUpload = async () => {
+    if (!pendingFile || !newDocName || !id) return;
+
+    try {
+      setIsProcessing(true);
+      const updatedOrder = await uploadAdditionalDocument(id, pendingFile, newDocName);
+      setOrder(updatedOrder);
+      toast.success("Document Uploaded Successfully");
+      setIsNamingDialogOpen(false);
+      setNewDocName("");
+      setPendingFile(null);
+    } catch (error) {
+      toast.error("Failed to upload document");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDeleteDoc = async (type: string, name?: string) => {
+    if (!id || !window.confirm(`Are you sure you want to delete this document?`)) return;
+
+    try {
+      setIsProcessing(true);
+      let updatedOrder;
+      if (type === "additional" && name) {
+        updatedOrder = await deleteAdditionalDocument(id, name);
+        toast.success(`"${name}" deleted successfully`);
+      } else {
+        updatedOrder = await deletePrimaryDocument(id, type);
+        toast.success("Document deleted successfully");
+      }
+      setOrder(updatedOrder);
+    } catch (error) {
+      toast.error("Failed to delete document");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRequestDocument = async () => {
+    if (!id || !requestedDocName) return;
+    try {
+      setIsProcessing(true);
+      const updatedOrder = await requestDocument(id, requestedDocName);
+      setOrder(updatedOrder);
+      toast.success(`Request for "${requestedDocName}" sent`);
+      setIsRequestDialogOpen(false);
+      setRequestedDocName("");
+    } catch (error) {
+      toast.error("Failed to send request");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const isOwner = user?.role === "Dealer" && (user?.dealerId === (order as any)?.dealerId?._id || user?.dealerId === (order as any)?.dealerId);
+  const canModifyDocs = isAdmin || isOwner;
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-10 w-24" />
+            <div>
+              <Skeleton className="h-8 w-48 mb-1" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          </div>
+          <Skeleton className="h-6 w-24 rounded-full" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
 
   if (!order || !dealer) {
     return (
@@ -445,10 +550,11 @@ export function OrderDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Tabs */}
         <div className="lg:col-span-2">
-          <Tabs defaultValue="details">
-            <TabsList>
+          <Tabs defaultValue="details" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="details">Order Details</TabsTrigger>
               <TabsTrigger value="documents">Documents</TabsTrigger>
+              <TabsTrigger value="execution">Execution History</TabsTrigger>
               <TabsTrigger value="activity">Activity Timeline</TabsTrigger>
             </TabsList>
 
@@ -516,22 +622,22 @@ export function OrderDetail() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                   Dealer Details
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12 text-sm">
                   <div className="space-y-1">
-                    <p className="text-gray-500">Company Name</p>
-                    <p className="font-semibold text-gray-900">{dealer.name} <span className="text-xs text-gray-400 font-normal">({dealer.code})</span></p>
+                    <p className="text-gray-500 font-medium">Company Name</p>
+                    <p className="font-semibold text-gray-900 capitalize">{dealer.name} <span className="text-xs text-gray-400 font-normal">({dealer.code})</span></p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-gray-500">Phone</p>
-                    <p className="font-medium text-gray-900">{dealer.phone || (dealer as any).contact}</p>
+                    <p className="text-gray-500 font-medium">Phone</p>
+                    <p className="font-medium text-gray-900">{dealer.phone || (dealer as any).contact || "N/A"}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-gray-500">Email Address</p>
-                    <p className="font-medium text-gray-900 text-blue-600">{dealer.email}</p>
+                    <p className="text-gray-500 font-medium">Email Address</p>
+                    <p className="font-medium text-gray-900 text-blue-600 break-all">{dealer.email}</p>
                   </div>
-                  <div className="col-span-1 md:col-span-2 space-y-1">
-                    <p className="text-gray-500">Business Address</p>
-                    <p className="font-medium text-gray-900">
+                  <div className="space-y-1">
+                    <p className="text-gray-500 font-medium">Business Address</p>
+                    <p className="font-medium text-gray-900 capitalize">
                       {dealer.city}, {dealer.region}
                     </p>
                   </div>
@@ -542,110 +648,98 @@ export function OrderDetail() {
             <TabsContent value="documents" className="mt-6">
               <Card className="p-6">
                 <div className="space-y-4">
-                  {order.poDocument?.url ? (
-                    <div className="border border-green-200 bg-green-50 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 flex-shrink-0 bg-white border border-green-200 rounded overflow-hidden flex items-center justify-center">
-                            {order.poDocument.url.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                              <img src={order.poDocument.url} alt="PO" className="w-full h-full object-cover" />
-                            ) : (
-                              <FileText className="w-6 h-6 text-green-600" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              Purchase Order
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Uploaded on {new Date(order.poDocument.uploadedAt).toLocaleString()}
-                            </p>
-                          </div>
+                  {/* Purchase Order */}
+                  <div className={`border rounded-lg p-4 ${order.poDocument?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${order.poDocument?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                          1
                         </div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.poDocument!.url, title: "Purchase Order" })}>
-                            <Eye className="w-4 h-4 mr-2" /> View
-                          </Button>
-                          <a href={order.poDocument.url} download={`PO_${order.orderNumber}`} target="_blank" rel="noreferrer">
-                            <Button variant="outline" size="sm" className="text-blue-600 border-blue-200">
-                              <Download className="w-4 h-4 mr-2" /> Download
-                            </Button>
-                          </a>
-                          <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => document.getElementById("po-upload")?.click()}>
-                            Re-upload
-                          </Button>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">Purchase Order</p>
+                          <p className="text-xs text-gray-500">
+                            {order.poDocument?.url
+                              ? `Uploaded on ${new Date(order.poDocument.uploadedAt).toLocaleString()}`
+                              : "Please upload the signed PO to proceed"}
+                          </p>
                         </div>
                       </div>
+                      <div className="flex gap-2">
+                        {order.poDocument?.url ? (
+                          <>
+                            <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.poDocument!.url, title: "Purchase Order" })} title="View">
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <a href={order.poDocument.url} download={`PO_${order.orderNumber}`} target="_blank" rel="noreferrer">
+                              <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
+                                <Download className="w-4 h-4" />
+                              </Button>
+                            </a>
+                            {canModifyDocs && (
+                              <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => document.getElementById("po-upload")?.click()} title="Re-upload">
+                                <RefreshCw className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          canModifyDocs && (
+                            <Button variant="outline" size="sm" onClick={() => document.getElementById("po-upload")?.click()} disabled={!!uploadingDoc}>
+                              {uploadingDoc === "PO" ? "Uploading..." : "Upload PO"}
+                            </Button>
+                          )
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center bg-gray-50">
-                      <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm font-medium text-gray-900 mb-1">
-                        Purchase Order Missing
-                      </p>
-                      <p className="text-xs text-gray-500 mb-4">
-                        Please upload the signed PO to proceed
-                      </p>
-                      <Button variant="outline" size="sm" onClick={() => document.getElementById("po-upload")?.click()} disabled={isUploading}>
-                        {isUploading ? "Uploading..." : "Upload PO"}
-                      </Button>
-                    </div>
-                  )}
+                  </div>
 
-                  {order.paymentDocument?.url ? (
-                    <div className="border border-green-200 bg-green-50 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 flex-shrink-0 bg-white border border-green-200 rounded overflow-hidden flex items-center justify-center">
-                            {order.paymentDocument.url.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                              <img src={order.paymentDocument.url} alt="Payment" className="w-full h-full object-cover" />
-                            ) : (
-                              <FileText className="w-6 h-6 text-green-600" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              Payment Receipt
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Uploaded on {new Date(order.paymentDocument.uploadedAt).toLocaleString()}
-                            </p>
-                          </div>
+                  {/* Payment Receipt */}
+                  <div className={`border rounded-lg p-4 ${order.paymentDocument?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${order.paymentDocument?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                          2
                         </div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.paymentDocument!.url, title: "Payment Receipt" })}>
-                            <Eye className="w-4 h-4 mr-2" /> View
-                          </Button>
-                          <a href={order.paymentDocument.url} download={`Payment_${order.orderNumber}`} target="_blank" rel="noreferrer">
-                            <Button variant="outline" size="sm" className="text-blue-600 border-blue-200">
-                              <Download className="w-4 h-4 mr-2" /> Download
-                            </Button>
-                          </a>
-                          <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => document.getElementById("payment-upload")?.click()}>
-                            Re-upload
-                          </Button>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">Payment Receipt</p>
+                          <p className="text-xs text-gray-500">
+                            {order.paymentDocument?.url
+                              ? `Uploaded on ${new Date(order.paymentDocument.uploadedAt).toLocaleString()}`
+                              : "Upload payment confirmation receipt"}
+                          </p>
                         </div>
                       </div>
+                      <div className="flex gap-2">
+                        {order.paymentDocument?.url ? (
+                          <>
+                            <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.paymentDocument!.url, title: "Payment Receipt" })} title="View">
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <a href={order.paymentDocument.url} download={`Payment_${order.orderNumber}`} target="_blank" rel="noreferrer">
+                              <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
+                                <Download className="w-4 h-4" />
+                              </Button>
+                            </a>
+                            {canModifyDocs && (
+                              <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => document.getElementById("payment-upload")?.click()} title="Re-upload">
+                                <RefreshCw className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          canModifyDocs && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => document.getElementById("payment-upload")?.click()}
+                              disabled={!!uploadingDoc || !order.poDocument}
+                            >
+                              {uploadingDoc === "Payment" ? "Uploading..." : "Upload Receipt"}
+                            </Button>
+                          )
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center bg-gray-50">
-                      <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm font-medium text-gray-900 mb-1">
-                        Payment Receipt Missing
-                      </p>
-                      <p className="text-xs text-gray-500 mb-4">
-                        Upload payment confirmation receipt
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => document.getElementById("payment-upload")?.click()}
-                        disabled={isUploading || !order.poDocument}
-                      >
-                        {isUploading ? "Uploading..." : "Upload Receipt"}
-                      </Button>
-                    </div>
-                  )}
+                  </div>
 
                   {/* Hidden inputs for file upload */}
                   <input
@@ -667,98 +761,97 @@ export function OrderDetail() {
                     }}
                   />
 
-                  {/* Lovol Invoice Upload */}
+                  {/* Official Invoices */}
                   <div className="mt-6 border-t pt-6">
                     <h4 className="text-sm font-medium text-gray-900 mb-4">Official Invoices</h4>
                     <div className="space-y-4">
-                      {order.lovolInvoiceDocument?.url ? (
-                        <div className="border border-green-200 bg-green-50 rounded-lg p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 flex-shrink-0 bg-white border border-green-200 rounded overflow-hidden flex items-center justify-center">
-                                {order.lovolInvoiceDocument.url.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                                  <img src={order.lovolInvoiceDocument.url} alt="Lovol Invoice" className="w-full h-full object-cover" />
-                                ) : (
-                                  <FileText className="w-6 h-6 text-green-600" />
-                                )}
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">Lovol Invoice</p>
-                                <p className="text-xs text-gray-500">
-                                  Uploaded on {new Date(order.lovolInvoiceDocument.uploadedAt).toLocaleString()}
-                                </p>
-                              </div>
+                      {/* Lovol Invoice */}
+                      <div className={`border rounded-lg p-4 ${order.lovolInvoiceDocument?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${order.lovolInvoiceDocument?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                              3
                             </div>
-                            <div className="flex gap-2">
-                              <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.lovolInvoiceDocument!.url, title: "Lovol Invoice" })}>
-                                <Eye className="w-4 h-4 mr-2" /> View
-                              </Button>
-                              <a href={order.lovolInvoiceDocument.url} download={`Lovol_Invoice_${order.orderNumber}`} target="_blank" rel="noreferrer">
-                                <Button variant="outline" size="sm" className="text-blue-600 border-blue-200">
-                                  <Download className="w-4 h-4 mr-2" /> Download
-                                </Button>
-                              </a>
-                              <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => document.getElementById("lovol-invoice-upload")?.click()}>
-                                Re-upload
-                              </Button>
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">Lovol Invoice</p>
+                              <p className="text-xs text-gray-500">
+                                {order.lovolInvoiceDocument?.url
+                                  ? `Uploaded on ${new Date(order.lovolInvoiceDocument.uploadedAt).toLocaleString()}`
+                                  : "Official invoice for the dealer"}
+                              </p>
                             </div>
                           </div>
+                          <div className="flex gap-2">
+                            {order.lovolInvoiceDocument?.url ? (
+                              <>
+                                <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.lovolInvoiceDocument!.url, title: "Lovol Invoice" })} title="View">
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                                <a href={order.lovolInvoiceDocument.url} download={`Lovol_Invoice_${order.orderNumber}`} target="_blank" rel="noreferrer">
+                                  <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
+                                    <Download className="w-4 h-4" />
+                                  </Button>
+                                </a>
+                                {isAdmin && (
+                                  <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => document.getElementById("lovol-invoice-upload")?.click()} title="Re-upload">
+                                    <RefreshCw className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </>
+                            ) : (
+                              isAdmin && (
+                                <Button variant="outline" size="sm" onClick={() => document.getElementById("lovol-invoice-upload")?.click()} disabled={!!uploadingDoc || order.currentStage !== "Invoice Generation"}>
+                                  {uploadingDoc === "LovolInvoice" ? "Uploading..." : "Upload Invoice"}
+                                </Button>
+                              )
+                            )}
+                          </div>
                         </div>
-                      ) : (
-                        <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center bg-gray-50">
-                          <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                          <p className="text-sm font-medium text-gray-900 mb-1">Generate/Upload Lovol Invoice</p>
-                          <p className="text-xs text-gray-500 mb-4">Official invoice for the dealer</p>
-                          <Button variant="outline" size="sm" onClick={() => document.getElementById("lovol-invoice-upload")?.click()} disabled={isUploading || order.currentStage !== "Invoice Generation"}>
-                            {isUploading ? "Uploading..." : "Upload Invoice"}
-                          </Button>
-                        </div>
-                      )}
+                      </div>
 
-                      {/* Dealer Invoice Upload */}
-                      {order.dealerInvoiceDocument?.url ? (
-                        <div className="border border-green-200 bg-green-50 rounded-lg p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 flex-shrink-0 bg-white border border-green-200 rounded overflow-hidden flex items-center justify-center">
-                                {order.dealerInvoiceDocument.url.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                                  <img src={order.dealerInvoiceDocument.url} alt="Dealer Invoice" className="w-full h-full object-cover" />
-                                ) : (
-                                  <FileText className="w-6 h-6 text-green-600" />
-                                )}
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">Dealer Customer Invoice</p>
-                                <p className="text-xs text-gray-500">
-                                  Uploaded on {new Date(order.dealerInvoiceDocument.uploadedAt).toLocaleString()}
-                                </p>
-                              </div>
+                      {/* Dealer Invoice */}
+                      <div className={`border rounded-lg p-4 ${order.dealerInvoiceDocument?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${order.dealerInvoiceDocument?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                              4
                             </div>
-                            <div className="flex gap-2">
-                              <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.dealerInvoiceDocument!.url, title: "Dealer Customer Invoice" })}>
-                                <Eye className="w-4 h-4 mr-2" /> View
-                              </Button>
-                              <a href={order.dealerInvoiceDocument.url} download={`Dealer_Invoice_${order.orderNumber}`} target="_blank" rel="noreferrer">
-                                <Button variant="outline" size="sm" className="text-blue-600 border-blue-200">
-                                  <Download className="w-4 h-4 mr-2" /> Download
-                                </Button>
-                              </a>
-                              <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => document.getElementById("dealer-invoice-upload")?.click()}>
-                                Re-upload
-                              </Button>
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">Dealer Customer Invoice</p>
+                              <p className="text-xs text-gray-500">
+                                {order.dealerInvoiceDocument?.url
+                                  ? `Uploaded on ${new Date(order.dealerInvoiceDocument.uploadedAt).toLocaleString()}`
+                                  : "The invoice you issued to your customer"}
+                              </p>
                             </div>
                           </div>
+                          <div className="flex gap-2">
+                            {order.dealerInvoiceDocument?.url ? (
+                              <>
+                                <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.dealerInvoiceDocument!.url, title: "Dealer Customer Invoice" })} title="View">
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                                <a href={order.dealerInvoiceDocument.url} download={`Dealer_Invoice_${order.orderNumber}`} target="_blank" rel="noreferrer">
+                                  <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
+                                    <Download className="w-4 h-4" />
+                                  </Button>
+                                </a>
+                                {canModifyDocs && (
+                                  <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => document.getElementById("dealer-invoice-upload")?.click()} title="Re-upload">
+                                    <RefreshCw className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </>
+                            ) : (
+                              canModifyDocs && (
+                                <Button variant="outline" size="sm" onClick={() => document.getElementById("dealer-invoice-upload")?.click()} disabled={!!uploadingDoc || !order.lovolInvoiceDocument}>
+                                  {uploadingDoc === "DealerInvoice" ? "Uploading..." : "Upload Invoice"}
+                                </Button>
+                              )
+                            )}
+                          </div>
                         </div>
-                      ) : (
-                        <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center bg-gray-50">
-                          <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                          <p className="text-sm font-medium text-gray-900 mb-1">Upload Customer Invoice</p>
-                          <p className="text-xs text-gray-500 mb-4">The invoice you issued to your customer</p>
-                          <Button variant="outline" size="sm" onClick={() => document.getElementById("dealer-invoice-upload")?.click()} disabled={isUploading || !order.lovolInvoiceDocument}>
-                            {isUploading ? "Uploading..." : "Upload Invoice"}
-                          </Button>
-                        </div>
-                      )}
+                      </div>
                     </div>
                   </div>
 
@@ -782,14 +875,233 @@ export function OrderDetail() {
                     }}
                   />
 
-                  <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center">
-                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-600 mb-2">
-                      Upload additional documents
-                    </p>
-                    <Button variant="outline" size="sm">
-                      Choose File
-                    </Button>
+                  {/* Additional Documents List */}
+                  {order.additionalDocuments?.map((doc, index) => (
+                    <div key={index} className={`border rounded-lg p-4 ${doc.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${doc.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                            {5 + index}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {doc.name}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {doc.url
+                                ? `Uploaded on ${new Date(doc.uploadedAt).toLocaleString()}`
+                                : "Document requested by Administrator"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {doc.url ? (
+                            <>
+                              <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: doc.url, title: doc.name })} title="View">
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <a href={doc.url} download={doc.name} target="_blank" rel="noreferrer">
+                                <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
+                                  <Download className="w-4 h-4" />
+                                </Button>
+                              </a>
+                              {canModifyDocs && (
+                                <>
+                                  <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => handleReupload(doc.name)} title="Re-upload">
+                                    <RefreshCw className="w-4 h-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteDoc("additional", doc.name)} title="Delete">
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            canModifyDocs && (
+                              <>
+                                <Button variant="outline" size="sm" onClick={() => handleReupload(doc.name)} disabled={isProcessing}>
+                                  Upload Document
+                                </Button>
+                                <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteDoc("additional", doc.name)} title="Delete">
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {canModifyDocs && (
+                    <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => document.getElementById("additional-upload")?.click()}>
+                      <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-gray-900 mb-1">
+                        Upload additional documents
+                      </p>
+                      <p className="text-xs text-gray-500 mb-4">
+                        Add any other relevant files like invoices or transport docs
+                      </p>
+                      <Button variant="outline" size="sm">
+                        Choose File
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Hidden inputs moved outside clickable div to prevent bubbling */}
+                  <input
+                    type="file"
+                    id="additional-upload"
+                    className="hidden"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        setPendingFile(e.target.files[0]);
+                        setIsNamingDialogOpen(true);
+                      }
+                      e.target.value = ""; // Clear for future pick
+                    }}
+                  />
+                  <input
+                    type="file"
+                    id="reupload-input"
+                    className="hidden"
+                    accept="image/*,application/pdf"
+                    onChange={async (e) => {
+                      if (e.target.files?.[0] && id) {
+                        try {
+                          setIsProcessing(true);
+                          const currentName = reuploadNameRef.current;
+                          const updatedOrder = await uploadAdditionalDocument(id, e.target.files[0], currentName);
+                          setOrder(updatedOrder);
+                          toast.success("Document Updated Successfully");
+                          setIsReuploading(false);
+                        } catch (error) {
+                          toast.error("Failed to update document");
+                        } finally {
+                          setIsProcessing(false);
+                          setIsReuploading(false);
+                          e.target.value = ""; // Clear for future pick
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="execution" className="mt-6">
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 font-enterprise flex items-center gap-2">
+                      <ClipboardList className="w-5 h-5 text-blue-600" />
+                      Execution & Milestone History
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">Detailed record of the order fulfillment lifecycle.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Dispatch Details */}
+                  <div className={`border rounded-xl p-5 ${order.deliveryDetails?.transportName ? 'bg-white border-blue-100 shadow-sm' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${order.deliveryDetails?.transportName ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-400'}`}>
+                        <Truck className="w-5 h-5" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900">Dispatch Details</h4>
+                    </div>
+                    {order.deliveryDetails?.transportName ? (
+                      <div className="space-y-3 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Transport:</span>
+                          <span className="font-medium text-gray-900">{order.deliveryDetails.transportName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Tracking ID:</span>
+                          <span className="font-medium text-blue-600 select-all">{order.deliveryDetails.trackingId}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Est. Arrival:</span>
+                          <span className="font-medium text-gray-900">
+                            {order.deliveryDetails.estimatedDeliveryDate ? new Date(order.deliveryDetails.estimatedDeliveryDate).toLocaleDateString() : "N/A"}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic">Awaiting dispatch info...</p>
+                    )}
+                  </div>
+
+                  {/* Installation Milestone */}
+                  <div className={`border rounded-xl p-5 ${orderStages.findIndex(s => s.name === order.currentStage) > orderStages.findIndex(s => s.name === "Installation") || order.currentStage === "Order Completed" ? 'bg-white border-green-100 shadow-sm' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${orderStages.findIndex(s => s.name === order.currentStage) > orderStages.findIndex(s => s.name === "Installation") || order.currentStage === "Order Completed" ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-400'}`}>
+                        <Wrench className="w-5 h-5" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900">Installation Status</h4>
+                    </div>
+                    {(orderStages.findIndex(s => s.name === order.currentStage) > orderStages.findIndex(s => s.name === "Installation") || order.currentStage === "Order Completed") ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-green-700 bg-green-50 px-3 py-2 rounded-lg text-sm font-medium border border-green-100">
+                          <CheckCircle className="w-4 h-4" />
+                          Marked as Completed
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">The product has been successfully installed and verified by the technician.</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic">Installation phase pending.</p>
+                    )}
+                  </div>
+
+                  {/* Warranty Milestone */}
+                  <div className={`border rounded-xl p-5 lg:col-span-2 ${order.warrantyDetails?.machineSerialNumber ? 'bg-white border-purple-100 shadow-sm' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${order.warrantyDetails?.machineSerialNumber ? 'bg-purple-100 text-purple-600' : 'bg-gray-200 text-gray-400'}`}>
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900">Warranty Registration</h4>
+                    </div>
+                    {order.warrantyDetails?.machineSerialNumber ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
+                        <div className="space-y-3">
+                          <div className="flex justify-between border-b pb-2">
+                            <span className="text-gray-500">Machine SN:</span>
+                            <span className="font-bold text-gray-900 select-all">{order.warrantyDetails.machineSerialNumber}</span>
+                          </div>
+                          <div className="flex justify-between border-b pb-2">
+                            <span className="text-gray-500">Engine Number:</span>
+                            <span className="font-medium text-gray-900">{order.warrantyDetails.engineNumber || "N/A"}</span>
+                          </div>
+                          <div className="flex justify-between border-b pb-2">
+                            <span className="text-gray-500">Duration:</span>
+                            <span className="font-medium text-gray-900">{order.warrantyDetails.warrantyMonths} Months</span>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="flex justify-between border-b pb-2">
+                            <span className="text-gray-500">Coverage Start:</span>
+                            <span className="font-medium text-gray-900">{order.warrantyDetails?.warrantyStartDate ? new Date(order.warrantyDetails.warrantyStartDate).toLocaleDateString() : "N/A"}</span>
+                          </div>
+                          <div className="flex justify-between border-b pb-2">
+                            <span className="text-gray-500">Coverage End:</span>
+                            <span className="font-bold text-green-700">{order.warrantyDetails?.warrantyEndDate ? new Date(order.warrantyDetails.warrantyEndDate).toLocaleDateString() : "N/A"}</span>
+                          </div>
+                          {order.warrantyDetails.warrantyDocument?.url && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full text-blue-600 border-blue-200 bg-blue-50/50 hover:bg-blue-50"
+                              onClick={() => setViewingDoc({ url: order.warrantyDetails!.warrantyDocument!.url, title: "Warranty Certificate" })}
+                            >
+                              <Eye className="w-4 h-4 mr-2" /> View Signed Document
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic">Warranty registration details will appear here once submitted.</p>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -823,7 +1135,7 @@ export function OrderDetail() {
             </h3>
             <div className="space-y-2">
               {order.currentStage === "Payment Verification" && (
-                <Button 
+                <Button
                   className="w-full justify-start bg-green-600 hover:bg-green-700"
                   onClick={handleApprove}
                   disabled={isProcessing}
@@ -834,7 +1146,7 @@ export function OrderDetail() {
               )}
 
               {order.currentStage === "Order Approval" && (
-                <Button 
+                <Button
                   className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white"
                   onClick={handleFinalApprove}
                   disabled={isProcessing}
@@ -870,7 +1182,7 @@ export function OrderDetail() {
                       onChange={(e) => setEstimatedDeliveryDate(e.target.value)}
                     />
                   </div>
-                  <Button 
+                  <Button
                     className="w-full justify-start mt-2"
                     onClick={handleUpdateDelivery}
                     disabled={isProcessing || !transportName || !trackingId || !estimatedDeliveryDate}
@@ -898,14 +1210,14 @@ export function OrderDetail() {
                   <div className="flex justify-between text-gray-500">
                     <span>Est. Delivery:</span>
                     <span className="text-gray-900">
-                      {order.deliveryDetails.estimatedDeliveryDate 
-                        ? new Date(order.deliveryDetails.estimatedDeliveryDate).toLocaleDateString() 
+                      {order.deliveryDetails.estimatedDeliveryDate
+                        ? new Date(order.deliveryDetails.estimatedDeliveryDate).toLocaleDateString()
                         : "N/A"}
                     </span>
                   </div>
-                  
+
                   {order.deliveryStatus === "Dispatched" && (
-                    <Button 
+                    <Button
                       className="w-full justify-start mt-4 bg-green-600 hover:bg-green-700 text-white"
                       onClick={handleConfirmReceipt}
                       disabled={isProcessing}
@@ -916,9 +1228,9 @@ export function OrderDetail() {
                   )}
                 </div>
               )}
-              
+
               {order.currentStage === "Installation" && (
-                <Button 
+                <Button
                   className="w-full justify-start mt-4 bg-green-600 hover:bg-green-700 text-white"
                   onClick={handleInstallationComplete}
                   disabled={isProcessing}
@@ -1003,7 +1315,7 @@ export function OrderDetail() {
                       />
                     </div>
                   </div>
-                  <Button 
+                  <Button
                     className="w-full justify-start mt-2 bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={handleRegisterWarranty}
                     disabled={isProcessing || !machineSerialNumber}
@@ -1013,17 +1325,16 @@ export function OrderDetail() {
                 </div>
               )}
 
-              <Button className="w-full justify-start" variant="outline">
-                Request Documents
-              </Button>
-              <Button className="w-full justify-start" variant="outline">
+              {isAdmin && (
+                <Button className="w-full justify-start" variant="outline" onClick={() => setIsRequestDialogOpen(true)} disabled={isProcessing}>
+                  {isProcessing ? "Processing..." : "Request Documents"}
+                </Button>
+              )}
+              <Button className="w-full justify-start" variant="outline" onClick={() => setIsStatusChangeDialogOpen(true)}>
                 Update Status
               </Button>
-              <Button className="w-full justify-start" variant="outline">
-                Generate Invoice
-              </Button>
-              <Button 
-                className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50" 
+              <Button
+                className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
                 variant="outline"
                 onClick={handleCancelOrder}
                 disabled={isProcessing || order.currentStage === "Cancelled"}
@@ -1078,17 +1389,17 @@ export function OrderDetail() {
           <div className="flex-1 bg-gray-800 relative flex items-center justify-center p-2 sm:p-6 overflow-hidden">
             {viewingDoc?.url.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
               <div className="w-full h-full flex items-center justify-center overflow-auto custom-scrollbar">
-                  <img 
-                  src={viewingDoc.url} 
-                  alt="Document Preview" 
+                <img
+                  src={viewingDoc.url}
+                  alt="Document Preview"
                   className="max-w-full max-h-full object-contain shadow-2xl rounded-sm"
                 />
               </div>
             ) : (
               <div className="w-full h-full flex flex-col bg-white">
-                <iframe 
-                  src={`${viewingDoc?.url}#toolbar=0`} 
-                  className="w-full flex-1 border-none" 
+                <iframe
+                  src={`${viewingDoc?.url}#toolbar=0`}
+                  className="w-full flex-1 border-none"
                   title="PDF Preview"
                 />
                 <div className="p-2 border-t text-center text-xs text-gray-500 bg-gray-50 flex items-center justify-center gap-2">
@@ -1098,6 +1409,147 @@ export function OrderDetail() {
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Naming Dialog */}
+      <Dialog open={isNamingDialogOpen} onOpenChange={setIsNamingDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Name your document</DialogTitle>
+            <DialogDescription>
+              Give this document a clear name so it's easy to identify later.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label htmlFor="doc-name" className="text-sm font-medium">Document Name</label>
+              <input
+                id="doc-name"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="e.g. Insurance Copy, Waybill..."
+                value={newDocName}
+                onChange={(e) => setNewDocName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {pendingFile && (
+              <p className="text-xs text-gray-500 italic">
+                Selected file: {pendingFile.name}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsNamingDialogOpen(false);
+              setPendingFile(null);
+              setNewDocName("");
+            }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAdditionalUpload}
+              disabled={!newDocName || isProcessing}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isProcessing ? "Uploading..." : "Upload Document"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Request Document Dialog */}
+      <Dialog open={isRequestDialogOpen} onOpenChange={setIsRequestDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request Document</DialogTitle>
+            <DialogDescription>
+              Specify the name of the document you need from the dealer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label htmlFor="req-doc-name" className="text-sm font-medium">Document Name</label>
+              <input
+                id="req-doc-name"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="e.g. Bank Statement, Identity Proof..."
+                value={requestedDocName}
+                onChange={(e) => setRequestedDocName(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsRequestDialogOpen(false);
+              setRequestedDocName("");
+            }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRequestDocument}
+              disabled={!requestedDocName || isProcessing}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isProcessing ? "Sending..." : "Send Request"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Status Change Dialog (Admin Only) */}
+      <Dialog open={isStatusChangeDialogOpen} onOpenChange={setIsStatusChangeDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="w-5 h-5 text-orange-600" />
+              Update Order Status
+            </DialogTitle>
+            <DialogDescription>
+              Select a stage to jump the order to. This will update the progress bar and current status.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Target Stage</label>
+            <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+              {orderStages.map((stage, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setJumpTargetStage(stage.name)}
+                  className={`flex items-center justify-between p-3 rounded-lg border text-left transition-all ${jumpTargetStage === stage.name
+                      ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600"
+                      : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+                    }`}
+                >
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{stage.name}</p>
+                    <p className="text-xs text-gray-500">{stage.progress}% progress mark</p>
+                  </div>
+                  {jumpTargetStage === stage.name && <CheckCircle className="w-5 h-5 text-blue-600" />}
+                </button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsStatusChangeDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={() => {
+                const target = orderStages.find((s) => s.name === jumpTargetStage);
+                if (target) {
+                  handleStageJump(target.name, target.progress);
+                  setIsStatusChangeDialogOpen(false);
+                } else {
+                  toast.error("Please select a target stage");
+                }
+              }}
+              disabled={!jumpTargetStage || isProcessing}
+            >
+              {isProcessing ? "Updating..." : "Update Stage"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
