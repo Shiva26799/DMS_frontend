@@ -44,7 +44,7 @@ export function OrderDetail() {
     requestDocument
   } = useOrders();
   const { getDealer } = useDealers();
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, isSuperAdmin, isDistributor, isDealer, user } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
@@ -340,8 +340,10 @@ export function OrderDetail() {
     }
   };
 
-  const isOwner = user?.role === "Dealer" && (user?.dealerId === (order as any)?.dealerId?._id || user?.dealerId === (order as any)?.dealerId);
-  const canModifyDocs = isAdmin || isOwner;
+  // RBAC: readOnly comes from the backend for distributors viewing orders they didn't create
+  const isReadOnly = (order as any)?.readOnly === true;
+  // The creator or Super Admin can modify docs and perform lifecycle actions
+  const canModifyDocs = isSuperAdmin || !isReadOnly;
 
   if (isLoading) {
     return (
@@ -418,6 +420,16 @@ export function OrderDetail() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Read-Only Banner for Distributors */}
+      {isReadOnly && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-3">
+          <Eye className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-800">Read-Only View</p>
+            <p className="text-xs text-amber-600">You have view-only access to this order. Only the order creator or Super Admin can perform actions.</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -451,9 +463,9 @@ export function OrderDetail() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
           { label: "Dealer", value: order.dealer },
+          { label: "Fulfillment", value: order.orderSource || "Warehouse" },
           { label: "Order Value", value: `₹${Number(order.totalValue).toLocaleString()}` },
           { label: "Payment Status", value: order.paymentStatus, isBadge: true },
-          { label: "Delivery Status", value: order.deliveryStatus }
         ].map((card, i) => (
           <Card key={i} className="p-4">
             <p className="text-sm text-gray-600">{card.label}</p>
@@ -511,8 +523,8 @@ export function OrderDetail() {
                 <div key={index} className="text-center relative">
                   <div className="bg-white inline-block">
                     <div
-                      onClick={() => isAdmin && handleStageJump(stage.name, stage.progress)}
-                      className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center transition-all duration-300 ${isAdmin ? 'cursor-pointer hover:scale-110' : ''} ${stage.status === "completed"
+                      onClick={() => isSuperAdmin && handleStageJump(stage.name, stage.progress)}
+                      className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center transition-all duration-300 ${isSuperAdmin ? 'cursor-pointer hover:scale-110' : ''} ${stage.status === "completed"
                         ? "bg-green-100 text-green-600"
                         : stage.status === "current"
                           ? "bg-blue-100 shadow-md ring-4 ring-blue-50 text-blue-600"
@@ -649,28 +661,28 @@ export function OrderDetail() {
               <Card className="p-6">
                 <div className="space-y-4">
                   {/* Purchase Order */}
-                  <div className={`border rounded-lg p-4 ${order.poDocument?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                  <div className={`border rounded-lg p-4 ${(order as any).documents?.po?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${order.poDocument?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                        <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${(order as any).documents?.po?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
                           1
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-900">Purchase Order</p>
                           <p className="text-xs text-gray-500">
-                            {order.poDocument?.url
-                              ? `Uploaded on ${new Date(order.poDocument.uploadedAt).toLocaleString()}`
+                            {(order as any).documents?.po?.url
+                              ? `Uploaded on ${new Date((order as any).documents.po.uploadedAt).toLocaleString()}`
                               : "Please upload the signed PO to proceed"}
                           </p>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        {order.poDocument?.url ? (
+                        {(order as any).documents?.po?.url ? (
                           <>
-                            <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.poDocument!.url, title: "Purchase Order" })} title="View">
+                            <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: (order as any).documents.po.url, title: "Purchase Order" })} title="View">
                               <Eye className="w-4 h-4" />
                             </Button>
-                            <a href={order.poDocument.url} download={`PO_${order.orderNumber}`} target="_blank" rel="noreferrer">
+                            <a href={(order as any).documents.po.url} download={`PO_${order.orderNumber}`} target="_blank" rel="noreferrer">
                               <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
                                 <Download className="w-4 h-4" />
                               </Button>
@@ -693,28 +705,28 @@ export function OrderDetail() {
                   </div>
 
                   {/* Payment Receipt */}
-                  <div className={`border rounded-lg p-4 ${order.paymentDocument?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                  <div className={`border rounded-lg p-4 ${(order as any).documents?.payment?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${order.paymentDocument?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                        <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${(order as any).documents?.payment?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
                           2
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-900">Payment Receipt</p>
                           <p className="text-xs text-gray-500">
-                            {order.paymentDocument?.url
-                              ? `Uploaded on ${new Date(order.paymentDocument.uploadedAt).toLocaleString()}`
+                            {(order as any).documents?.payment?.url
+                              ? `Uploaded on ${new Date((order as any).documents.payment.uploadedAt).toLocaleString()}`
                               : "Upload payment confirmation receipt"}
                           </p>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        {order.paymentDocument?.url ? (
+                        {(order as any).documents?.payment?.url ? (
                           <>
-                            <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.paymentDocument!.url, title: "Payment Receipt" })} title="View">
+                            <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: (order as any).documents.payment.url, title: "Payment Receipt" })} title="View">
                               <Eye className="w-4 h-4" />
                             </Button>
-                            <a href={order.paymentDocument.url} download={`Payment_${order.orderNumber}`} target="_blank" rel="noreferrer">
+                            <a href={(order as any).documents.payment.url} download={`Payment_${order.orderNumber}`} target="_blank" rel="noreferrer">
                               <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
                                 <Download className="w-4 h-4" />
                               </Button>
@@ -731,7 +743,7 @@ export function OrderDetail() {
                               variant="outline"
                               size="sm"
                               onClick={() => document.getElementById("payment-upload")?.click()}
-                              disabled={!!uploadingDoc || !order.poDocument}
+                              disabled={!!uploadingDoc || !(order as any).documents?.po?.url}
                             >
                               {uploadingDoc === "Payment" ? "Uploading..." : "Upload Receipt"}
                             </Button>
@@ -766,28 +778,28 @@ export function OrderDetail() {
                     <h4 className="text-sm font-medium text-gray-900 mb-4">Official Invoices</h4>
                     <div className="space-y-4">
                       {/* Lovol Invoice */}
-                      <div className={`border rounded-lg p-4 ${order.lovolInvoiceDocument?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                      <div className={`border rounded-lg p-4 ${(order as any).documents?.lovolInvoice?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${order.lovolInvoiceDocument?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                            <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${(order as any).documents?.lovolInvoice?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
                               3
                             </div>
                             <div>
                               <p className="text-sm font-medium text-gray-900">Lovol Invoice</p>
                               <p className="text-xs text-gray-500">
-                                {order.lovolInvoiceDocument?.url
-                                  ? `Uploaded on ${new Date(order.lovolInvoiceDocument.uploadedAt).toLocaleString()}`
+                                {(order as any).documents?.lovolInvoice?.url
+                                  ? `Uploaded on ${new Date((order as any).documents.lovolInvoice.uploadedAt).toLocaleString()}`
                                   : "Official invoice for the dealer"}
                               </p>
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            {order.lovolInvoiceDocument?.url ? (
+                            {(order as any).documents?.lovolInvoice?.url ? (
                               <>
-                                <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.lovolInvoiceDocument!.url, title: "Lovol Invoice" })} title="View">
+                                <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: (order as any).documents.lovolInvoice.url, title: "Lovol Invoice" })} title="View">
                                   <Eye className="w-4 h-4" />
                                 </Button>
-                                <a href={order.lovolInvoiceDocument.url} download={`Lovol_Invoice_${order.orderNumber}`} target="_blank" rel="noreferrer">
+                                <a href={(order as any).documents.lovolInvoice.url} download={`Lovol_Invoice_${order.orderNumber}`} target="_blank" rel="noreferrer">
                                   <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
                                     <Download className="w-4 h-4" />
                                   </Button>
@@ -810,28 +822,28 @@ export function OrderDetail() {
                       </div>
 
                       {/* Dealer Invoice */}
-                      <div className={`border rounded-lg p-4 ${order.dealerInvoiceDocument?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                      <div className={`border rounded-lg p-4 ${(order as any).documents?.dealerInvoice?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${order.dealerInvoiceDocument?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                            <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${(order as any).documents?.dealerInvoice?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
                               4
                             </div>
                             <div>
                               <p className="text-sm font-medium text-gray-900">Dealer Customer Invoice</p>
                               <p className="text-xs text-gray-500">
-                                {order.dealerInvoiceDocument?.url
-                                  ? `Uploaded on ${new Date(order.dealerInvoiceDocument.uploadedAt).toLocaleString()}`
+                                {(order as any).documents?.dealerInvoice?.url
+                                  ? `Uploaded on ${new Date((order as any).documents.dealerInvoice.uploadedAt).toLocaleString()}`
                                   : "The invoice you issued to your customer"}
                               </p>
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            {order.dealerInvoiceDocument?.url ? (
+                            {(order as any).documents?.dealerInvoice?.url ? (
                               <>
-                                <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: order.dealerInvoiceDocument!.url, title: "Dealer Customer Invoice" })} title="View">
+                                <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: (order as any).documents.dealerInvoice.url, title: "Dealer Customer Invoice" })} title="View">
                                   <Eye className="w-4 h-4" />
                                 </Button>
-                                <a href={order.dealerInvoiceDocument.url} download={`Dealer_Invoice_${order.orderNumber}`} target="_blank" rel="noreferrer">
+                                <a href={(order as any).documents.dealerInvoice.url} download={`Dealer_Invoice_${order.orderNumber}`} target="_blank" rel="noreferrer">
                                   <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
                                     <Download className="w-4 h-4" />
                                   </Button>
@@ -844,7 +856,7 @@ export function OrderDetail() {
                               </>
                             ) : (
                               canModifyDocs && (
-                                <Button variant="outline" size="sm" onClick={() => document.getElementById("dealer-invoice-upload")?.click()} disabled={!!uploadingDoc || !order.lovolInvoiceDocument}>
+                                <Button variant="outline" size="sm" onClick={() => document.getElementById("dealer-invoice-upload")?.click()} disabled={!!uploadingDoc || !(order as any).documents?.lovolInvoice?.url}>
                                   {uploadingDoc === "DealerInvoice" ? "Uploading..." : "Upload Invoice"}
                                 </Button>
                               )
@@ -876,7 +888,7 @@ export function OrderDetail() {
                   />
 
                   {/* Additional Documents List */}
-                  {order.additionalDocuments?.map((doc, index) => (
+                  {(order as any).documents?.additional?.map((doc: any, index: number) => (
                     <div key={index} className={`border rounded-lg p-4 ${doc.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -906,27 +918,29 @@ export function OrderDetail() {
                                 </Button>
                               </a>
                               {canModifyDocs && (
-                                <>
-                                  <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => handleReupload(doc.name)} title="Re-upload">
-                                    <RefreshCw className="w-4 h-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteDoc("additional", doc.name)} title="Delete">
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </>
-                              )}
-                            </>
-                          ) : (
-                            canModifyDocs && (
-                              <>
-                                <Button variant="outline" size="sm" onClick={() => handleReupload(doc.name)} disabled={isProcessing}>
-                                  Upload Document
+                                <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => handleReupload(doc.name)} title="Re-upload">
+                                  <RefreshCw className="w-4 h-4" />
                                 </Button>
+                              )}
+                              {isSuperAdmin && (
                                 <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteDoc("additional", doc.name)} title="Delete">
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
-                              </>
-                            )
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {canModifyDocs && (
+                                <Button variant="outline" size="sm" onClick={() => handleReupload(doc.name)} disabled={isProcessing}>
+                                  Upload Document
+                                </Button>
+                              )}
+                              {isSuperAdmin && (
+                                <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteDoc("additional", doc.name)} title="Delete">
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
@@ -1087,12 +1101,12 @@ export function OrderDetail() {
                             <span className="text-gray-500">Coverage End:</span>
                             <span className="font-bold text-green-700">{order.warrantyDetails?.warrantyEndDate ? new Date(order.warrantyDetails.warrantyEndDate).toLocaleDateString() : "N/A"}</span>
                           </div>
-                          {order.warrantyDetails.warrantyDocument?.url && (
+                          {(order as any).documents?.warranty?.url && (
                             <Button
                               variant="outline"
                               size="sm"
                               className="w-full text-blue-600 border-blue-200 bg-blue-50/50 hover:bg-blue-50"
-                              onClick={() => setViewingDoc({ url: order.warrantyDetails!.warrantyDocument!.url, title: "Warranty Certificate" })}
+                              onClick={() => setViewingDoc({ url: (order as any).documents.warranty.url, title: "Warranty Certificate" })}
                             >
                               <Eye className="w-4 h-4 mr-2" /> View Signed Document
                             </Button>
@@ -1129,220 +1143,237 @@ export function OrderDetail() {
 
         {/* Right Column - Actions */}
         <div className="space-y-6">
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Admin Actions
-            </h3>
-            <div className="space-y-2">
-              {order.currentStage === "Payment Verification" && (
-                <Button
-                  className="w-full justify-start bg-green-600 hover:bg-green-700"
-                  onClick={handleApprove}
-                  disabled={isProcessing}
-                >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  {isProcessing ? "Processing..." : "Approve Payment"}
-                </Button>
-              )}
-
-              {order.currentStage === "Order Approval" && (
-                <Button
-                  className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white"
-                  onClick={handleFinalApprove}
-                  disabled={isProcessing}
-                >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  {isProcessing ? "Processing..." : "Approve Order"}
-                </Button>
-              )}
-
-              {/* Delivery Actions */}
-              {order.currentStage === "Delivery" && order.deliveryStatus !== "Dispatched" && (
-                <div className="space-y-3 pt-3 border-t">
-                  <h4 className="text-sm font-medium text-gray-900">Dispatch Details</h4>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      placeholder="Courier / Transport Name"
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      value={transportName}
-                      onChange={(e) => setTransportName(e.target.value)}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Tracking ID"
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      value={trackingId}
-                      onChange={(e) => setTrackingId(e.target.value)}
-                    />
-                    <input
-                      type="date"
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      value={estimatedDeliveryDate}
-                      onChange={(e) => setEstimatedDeliveryDate(e.target.value)}
-                    />
-                  </div>
+          {/* Only show action panel if user has any permission to act */}
+          {!isReadOnly && (
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                {isSuperAdmin ? "Admin Actions" : "Actions"}
+              </h3>
+              <div className="space-y-2">
+                {/* === SUPER ADMIN OR DEALER: Approve Payment === */}
+                {(isSuperAdmin || isDealer) && order.currentStage === "Payment Verification" && (
                   <Button
-                    className="w-full justify-start mt-2"
-                    onClick={handleUpdateDelivery}
-                    disabled={isProcessing || !transportName || !trackingId || !estimatedDeliveryDate}
+                    className="w-full justify-start bg-green-600 hover:bg-green-700"
+                    onClick={handleApprove}
+                    disabled={isProcessing}
                   >
-                    Mark as Dispatched
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    {isProcessing ? "Processing..." : "Approve Payment"}
                   </Button>
-                </div>
-              )}
+                )}
 
-              {order.deliveryDetails && order.deliveryDetails.transportName && (
-                <div className="space-y-2 pt-3 border-t text-sm">
-                  <h4 className="font-medium text-gray-900 border-b pb-2 mb-2">Delivery Status</h4>
-                  <div className="flex justify-between text-gray-500">
-                    <span>Status:</span>
-                    <span className="text-blue-600 font-medium">{order.deliveryStatus}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-500">
-                    <span>Courier:</span>
-                    <span className="text-gray-900">{order.deliveryDetails.transportName}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-500">
-                    <span>Tracking ID:</span>
-                    <span className="text-gray-900">{order.deliveryDetails.trackingId}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-500">
-                    <span>Est. Delivery:</span>
-                    <span className="text-gray-900">
-                      {order.deliveryDetails.estimatedDeliveryDate
-                        ? new Date(order.deliveryDetails.estimatedDeliveryDate).toLocaleDateString()
-                        : "N/A"}
-                    </span>
-                  </div>
+                {/* === SUPER ADMIN OR DEALER: Approve Order === */}
+                {(isSuperAdmin || isDealer) && order.currentStage === "Order Approval" && (
+                  <Button
+                    className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={handleFinalApprove}
+                    disabled={isProcessing}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    {isProcessing ? "Processing..." : "Approve Order"}
+                  </Button>
+                )}
 
-                  {order.deliveryStatus === "Dispatched" && (
+                {/* === SUPER ADMIN OR DEALER (Own Stock): Delivery Actions === */}
+                {(isSuperAdmin || (isDealer && order.orderSource === "Own Stock")) && order.currentStage === "Delivery" && order.deliveryStatus !== "Dispatched" && (
+                  <div className="space-y-3 pt-3 border-t">
+                    <h4 className="text-sm font-medium text-gray-900">Dispatch Details</h4>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder="Courier / Transport Name"
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        value={transportName}
+                        onChange={(e) => setTransportName(e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Tracking ID"
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        value={trackingId}
+                        onChange={(e) => setTrackingId(e.target.value)}
+                      />
+                      <input
+                        type="date"
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        value={estimatedDeliveryDate}
+                        onChange={(e) => setEstimatedDeliveryDate(e.target.value)}
+                      />
+                    </div>
                     <Button
-                      className="w-full justify-start mt-4 bg-green-600 hover:bg-green-700 text-white"
-                      onClick={handleConfirmReceipt}
-                      disabled={isProcessing}
+                      className="w-full justify-start mt-2"
+                      onClick={handleUpdateDelivery}
+                      disabled={isProcessing || !transportName || !trackingId || !estimatedDeliveryDate}
                     >
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      {isProcessing ? "Processing..." : "Confirm Receipt"}
+                      Mark as Dispatched
                     </Button>
-                  )}
-                </div>
-              )}
-
-              {order.currentStage === "Installation" && (
-                <Button
-                  className="w-full justify-start mt-4 bg-green-600 hover:bg-green-700 text-white"
-                  onClick={handleInstallationComplete}
-                  disabled={isProcessing}
-                >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  {isProcessing ? "Processing..." : "Installation Done"}
-                </Button>
-              )}
-
-              {order.currentStage === "Warranty Registration" && (
-                <div className="space-y-3 pt-3 border-t">
-                  <h4 className="text-sm font-medium text-gray-900">Warranty Registration</h4>
-                  <div className="space-y-2">
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Machine Serial Number *</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. SN12345678"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        value={machineSerialNumber}
-                        onChange={(e) => setMachineSerialNumber(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Engine Number</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. EN987654"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        value={engineNumber}
-                        onChange={(e) => setEngineNumber(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Warranty Start Date</label>
-                      <input
-                        type="date"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        value={warrantyStartDate}
-                        onChange={(e) => setWarrantyStartDate(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Warranty End Date</label>
-                      <input
-                        type="date"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        value={warrantyEndDate}
-                        onChange={(e) => setWarrantyEndDate(e.target.value)}
-                        readOnly
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Warranty (Months)</label>
-                        <input
-                          type="number"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                          value={warrantyMonths}
-                          onChange={(e) => setWarrantyMonths(Number(e.target.value))}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Maint. (Months)</label>
-                        <input
-                          type="number"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                          value={maintenanceMonths}
-                          onChange={(e) => setMaintenanceMonths(Number(e.target.value))}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Signed Warranty Document</label>
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium text-gray-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        onChange={(e) => {
-                          if (e.target.files) setWarrantyDocument(e.target.files[0]);
-                        }}
-                      />
-                    </div>
                   </div>
-                  <Button
-                    className="w-full justify-start mt-2 bg-blue-600 hover:bg-blue-700 text-white"
-                    onClick={handleRegisterWarranty}
-                    disabled={isProcessing || !machineSerialNumber}
-                  >
-                    Confirm Registration
-                  </Button>
-                </div>
-              )}
+                )}
 
-              {isAdmin && (
-                <Button className="w-full justify-start" variant="outline" onClick={() => setIsRequestDialogOpen(true)} disabled={isProcessing}>
-                  {isProcessing ? "Processing..." : "Request Documents"}
-                </Button>
-              )}
-              <Button className="w-full justify-start" variant="outline" onClick={() => setIsStatusChangeDialogOpen(true)}>
-                Update Status
-              </Button>
-              <Button
-                className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
-                variant="outline"
-                onClick={handleCancelOrder}
-                disabled={isProcessing || order.currentStage === "Cancelled"}
-              >
-                {isProcessing ? "Processing..." : "Cancel Order"}
-              </Button>
-            </div>
-          </Card>
+                {order.deliveryDetails && order.deliveryDetails.transportName && (
+                  <div className="space-y-2 pt-3 border-t text-sm">
+                    <h4 className="font-medium text-gray-900 border-b pb-2 mb-2">Delivery Status</h4>
+                    <div className="flex justify-between text-gray-500">
+                      <span>Status:</span>
+                      <span className="text-blue-600 font-medium">{order.deliveryStatus}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-500">
+                      <span>Courier:</span>
+                      <span className="text-gray-900">{order.deliveryDetails.transportName}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-500">
+                      <span>Tracking ID:</span>
+                      <span className="text-gray-900">{order.deliveryDetails.trackingId}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-500">
+                      <span>Est. Delivery:</span>
+                      <span className="text-gray-900">
+                        {order.deliveryDetails.estimatedDeliveryDate
+                          ? new Date(order.deliveryDetails.estimatedDeliveryDate).toLocaleDateString()
+                          : "N/A"}
+                      </span>
+                    </div>
+
+                    {/* CREATOR OR ADMIN: Confirm Receipt */}
+                    {canModifyDocs && order.deliveryStatus === "Dispatched" && (
+                      <Button
+                        className="w-full justify-start mt-4 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={handleConfirmReceipt}
+                        disabled={isProcessing}
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        {isProcessing ? "Processing..." : "Confirm Receipt"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {/* CREATOR OR ADMIN: Installation Complete */}
+                {canModifyDocs && order.currentStage === "Installation" && (
+                  <Button
+                    className="w-full justify-start mt-4 bg-green-600 hover:bg-green-700 text-white"
+                    onClick={handleInstallationComplete}
+                    disabled={isProcessing}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    {isProcessing ? "Processing..." : "Installation Done"}
+                  </Button>
+                )}
+
+                {/* CREATOR OR ADMIN: Warranty Registration */}
+                {canModifyDocs && order.currentStage === "Warranty Registration" && (
+                  <div className="space-y-3 pt-3 border-t">
+                    <h4 className="text-sm font-medium text-gray-900">Warranty Registration</h4>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Machine Serial Number *</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. SN12345678"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          value={machineSerialNumber}
+                          onChange={(e) => setMachineSerialNumber(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Engine Number</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. EN987654"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          value={engineNumber}
+                          onChange={(e) => setEngineNumber(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Warranty Start Date</label>
+                        <input
+                          type="date"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          value={warrantyStartDate}
+                          onChange={(e) => setWarrantyStartDate(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Warranty End Date</label>
+                        <input
+                          type="date"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          value={warrantyEndDate}
+                          onChange={(e) => setWarrantyEndDate(e.target.value)}
+                          readOnly
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Warranty (Months)</label>
+                          <input
+                            type="number"
+                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            value={warrantyMonths}
+                            onChange={(e) => setWarrantyMonths(Number(e.target.value))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Maint. (Months)</label>
+                          <input
+                            type="number"
+                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            value={maintenanceMonths}
+                            onChange={(e) => setMaintenanceMonths(Number(e.target.value))}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Signed Warranty Document</label>
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium text-gray-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          onChange={(e) => {
+                            if (e.target.files) setWarrantyDocument(e.target.files[0]);
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      className="w-full justify-start mt-2 bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={handleRegisterWarranty}
+                      disabled={isProcessing || !machineSerialNumber}
+                    >
+                      Confirm Registration
+                    </Button>
+                  </div>
+                )}
+
+                {/* === SUPER ADMIN ONLY: Request Documents === */}
+                {isSuperAdmin && (
+                  <Button className="w-full justify-start" variant="outline" onClick={() => setIsRequestDialogOpen(true)} disabled={isProcessing}>
+                    {isProcessing ? "Processing..." : "Request Documents"}
+                  </Button>
+                )}
+
+                {/* === SUPER ADMIN ONLY: Update Status === */}
+                {isSuperAdmin && (
+                  <Button className="w-full justify-start" variant="outline" onClick={() => setIsStatusChangeDialogOpen(true)}>
+                    Update Status
+                  </Button>
+                )}
+
+                {/* CREATOR OR ADMIN: Cancel Order */}
+                {canModifyDocs && (
+                  <Button
+                    className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+                    variant="outline"
+                    onClick={handleCancelOrder}
+                    disabled={isProcessing || order.currentStage === "Cancelled"}
+                  >
+                    {isProcessing ? "Processing..." : "Cancel Order"}
+                  </Button>
+                )}
+              </div>
+            </Card>
+          )}
 
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -1517,8 +1548,8 @@ export function OrderDetail() {
                   key={idx}
                   onClick={() => setJumpTargetStage(stage.name)}
                   className={`flex items-center justify-between p-3 rounded-lg border text-left transition-all ${jumpTargetStage === stage.name
-                      ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600"
-                      : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+                    ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600"
+                    : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
                     }`}
                 >
                   <div>

@@ -7,8 +7,8 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Path to the public key for RS256 verification (using process.cwd() for Vercel compatibility)
-const PUBLIC_KEY_PATH = path.join(process.cwd(), "backend", "public_key.pem");
+// Path to the public key for RS256 verification
+const PUBLIC_KEY_PATH = path.join(__dirname, "../../public_key.pem");
 
 export const checkJWTToken = async (req, res, next) => {
     try {
@@ -21,7 +21,7 @@ export const checkJWTToken = async (req, res, next) => {
         // Read public key for RS256 verification
         const publicKey = fs.readFileSync(PUBLIC_KEY_PATH, "utf8");
         const decoded = jwt.verify(token, publicKey, {
-            algorithms: ["RS256"]
+            algorithms: [process.env.JWT_ALGO]
         });
 
         // CRITICAL: Fetch the user from DB to ensure they still exist and have the correct role
@@ -47,3 +47,4 @@ export const superAdminOnly = (req, res, next) => {
         res.status(403).json({ message: "Super Admin access required" });
     }
 };
+export { checkPermission } from "./checkPermission.js";

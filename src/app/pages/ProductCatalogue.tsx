@@ -53,13 +53,13 @@ export function ProductCatalogue() {
 
   const debouncedSearch = useDebounce(searchQuery, 400);
 
-  const { data, isLoading: isProductsLoading } = useProducts({ 
-    page: currentPage, 
-    limit: itemsPerPage, 
+  const { data, isLoading: isProductsLoading } = useProducts({
+    page: currentPage,
+    limit: itemsPerPage,
     search: debouncedSearch,
     category: filterCategory === "all" ? undefined : filterCategory
   });
-  
+
   const products = data?.products || [];
   const totalProducts = data?.totalProducts || 0;
   const totalPages = data?.totalPages || 0;

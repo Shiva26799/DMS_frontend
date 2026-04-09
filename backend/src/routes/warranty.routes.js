@@ -11,7 +11,7 @@ import { uploadWarrantyMedia } from "../middleware/s3-upload.middleware.js";
 
 const router = express.Router();
 
-// Require authentication for all warranty routes
+// All warranty routes require authentication
 router.use(checkJWTToken);
 
 router.post("/", createClaim);

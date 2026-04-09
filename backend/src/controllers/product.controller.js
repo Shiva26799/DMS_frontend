@@ -32,7 +32,7 @@ export const getProducts = async (req, res) => {
             const reorderLevel = item.reorderLevel || 5;
             return item.stockAvailable <= reorderLevel;
         }).length;
-        
+
         const total = await Product.countDocuments(query);
 
         const products = await Product.find(query)

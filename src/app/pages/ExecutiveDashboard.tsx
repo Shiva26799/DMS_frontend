@@ -58,7 +58,6 @@ export function ExecutiveDashboard() {
   const isLoading = isOrdersLoading || isLeadsLoading || isClaimsLoading || isDealersLoading;
 
   const recentOrders = orders.slice(0, 5);
-  
   // Real-time metrics
   const monthlyOrders = orders.filter(o => {
     const orderDate = new Date(o.orderDate);
@@ -67,7 +66,6 @@ export function ExecutiveDashboard() {
   }).length;
 
   const pendingApprovals = orders.filter(o => o.currentStage === "Order Approval" || o.currentStage === "Payment Verification").length;
-  
   const openWarranties = claims.filter(c => c.status !== "Closed").length;
 
   const pendingClaims = claims.filter(
@@ -285,7 +283,7 @@ export function ExecutiveDashboard() {
                       <p className="text-sm font-medium text-gray-900">
                         {claim.claimNumber}
                       </p>
-                      <p className="text-xs text-gray-600">{claim.dealerId.companyName}</p>
+                      <p className="text-xs text-gray-600">{claim.dealerId?.companyName || "Unknown Dealer"}</p>
                     </div>
                     <StatusBadge status={claim.status} />
                   </div>

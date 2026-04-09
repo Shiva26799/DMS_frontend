@@ -1,12 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router";
-import { Plus, Filter, Search } from "lucide-react";
+import { Plus, Filter, Search, Warehouse } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
 import { mockProducts } from "../data/mockData";
 import { useDealers } from "../context/DealerContext";
 import { useOrders } from "../context/OrderContext";
+import { useVisibleWarehouses } from "../hooks/useInventory";
+import { useAuth } from "../context/AuthContext";
 import {
   Select,
   SelectContent,
@@ -28,6 +30,7 @@ import {
 } from "../components/ui/dialog";
 import { Label } from "../components/ui/label";
 import { ProductCombobox } from "../components/ProductCombobox";
+import { OrderForm } from "../components/OrderForm";
 
 export function OrderManagement() {
   const { dealers } = useDealers();
@@ -38,78 +41,14 @@ export function OrderManagement() {
     const timer = setTimeout(() => setIsLoading(false), 1000);
     return () => clearTimeout(timer);
   }, []);
+  const { role, isSuperAdmin } = useAuth();
+  const { data: visibleWarehouses = [], isLoading: isWarehousesLoading } = useVisibleWarehouses();
 
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
-  // Form state for new order
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    dealerId: "",
-    products: [{ productId: "", quantity: 1, price: "" as any }],
-  });
-
-  const addProductRow = () => {
-    setFormData({
-      ...formData,
-      products: [...formData.products, { productId: "", quantity: 1, price: "" as any }],
-    });
-  };
-
-  const removeProductRow = (index: number) => {
-    if (formData.products.length <= 1) return;
-    const newProducts = [...formData.products];
-    newProducts.splice(index, 1);
-    setFormData({ ...formData, products: newProducts });
-  };
-
-  const updateProductRow = (index: number, field: string, value: any) => {
-    const newProducts = [...formData.products];
-    newProducts[index] = { ...newProducts[index], [field]: value };
-    setFormData({ ...formData, products: newProducts });
-  };
-
-  const handleCreateOrder = async () => {
-    const selectedDealer = dealers.find((d) => d.id === formData.dealerId);
-    
-    // Validation
-    if (!formData.dealerId) {
-      alert("Please select a dealer.");
-      return;
-    }
-
-    if (formData.products.some(p => !p.productId)) {
-      alert("Please select a product for all items.");
-      return;
-    }
-
-    if (formData.products.some(p => Number(p.quantity) <= 0)) {
-      alert("Quantity must be greater than 0 for all items.");
-      return;
-    }
-
-    if (!selectedDealer) return;
-
-    try {
-      await addOrder({
-        dealerId: formData.dealerId,
-        products: formData.products.map(p => ({
-          productId: p.productId,
-          quantity: Number(p.quantity) || 1,
-          price: Number(p.price) || 0,
-        })),
-      });
-      
-      setFormData({
-        dealerId: "",
-        products: [{ productId: "", quantity: 1, price: "" as any }],
-      });
-      setIsDialogOpen(false);
-    } catch (error) {
-      console.error("Failed to create order:", error);
-    }
-  };
 
   const filteredOrders = orders.filter((order) => {
     const matchesStatus =
@@ -125,10 +64,10 @@ export function OrderManagement() {
   const totalOrders = orders.length;
   const totalValue = orders.reduce((sum, order) => sum + (Number(order.totalValue) || 0), 0);
   const pendingApprovals = orders.filter(
-    (o) => 
-      o.currentStage === "PO Upload" || 
-      o.currentStage === "Payment Upload" || 
-      o.currentStage === "Payment Verification" || 
+    (o) =>
+      o.currentStage === "PO Upload" ||
+      o.currentStage === "Payment Upload" ||
+      o.currentStage === "Payment Verification" ||
       o.currentStage === "Order Approval"
   ).length;
 
@@ -153,107 +92,13 @@ export function OrderManagement() {
             <DialogHeader>
               <DialogTitle>Create New Order</DialogTitle>
             </DialogHeader>
-            <div className="grid gap-6 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="dealer" className="text-sm font-semibold">Select Dealer <span className="text-red-500">*</span></Label>
-                <Select
-                  value={formData.dealerId}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, dealerId: value })
-                  }
-                >
-                  <SelectTrigger id="dealer" className="h-10">
-                    <SelectValue placeholder="Choose a dealer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dealers
-                      .filter((d) => d.status === "Approved")
-                      .map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold">Products <span className="text-red-500">*</span></Label>
-                  <Button type="button" variant="outline" size="sm" onClick={addProductRow} className="h-8 text-blue-600 border-blue-200 hover:bg-blue-50">
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Product
-                  </Button>
-                </div>
-                
-                <div className="space-y-2">
-                  {formData.products.map((row, index) => (
-                    <div key={index} className="flex gap-2 items-center group">
-                      <div className="flex-grow grid grid-cols-12 gap-2 items-center border p-2 rounded-md bg-white shadow-sm">
-                        <div className="col-span-6">
-                          <ProductCombobox
-                            onSelect={(selected) => {
-                              const product = Array.isArray(selected) ? selected[0] : selected;
-                              updateProductRow(index, "productId", product?.id || "");
-                              if (product?.price) {
-                                updateProductRow(index, "price", product.price);
-                              }
-                            }}
-                            placeholder="Select product..."
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <Input
-                            type="number"
-                            min="1"
-                            placeholder="Qty"
-                            value={row.quantity}
-                            onChange={(e) => updateProductRow(index, "quantity", e.target.value)}
-                            className="h-9"
-                          />
-                        </div>
-                        <div className="col-span-4">
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
-                            <Input
-                              type="number"
-                              placeholder="Price"
-                              value={row.price}
-                              onChange={(e) => updateProductRow(index, "price", e.target.value)}
-                              className="h-9 pl-6"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <Button 
-                        type="button" 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-9 w-9 text-gray-400 hover:text-red-500 hover:bg-red-50 shrink-0"
-                        onClick={() => removeProductRow(index)}
-                        disabled={formData.products.length <= 1}
-                      >
-                        <Plus className="w-4 h-4 rotate-45" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <DialogFooter className="mt-6 border-t pt-4">
-              <div className="flex-1 flex items-center text-sm">
-                <span className="text-gray-500 mr-2">Estimate Total:</span>
-                <span className="text-lg font-bold text-blue-600">
-                  ₹{formData.products.reduce((sum, p) => sum + (Number(p.price) * Number(p.quantity) || 0), 0).toLocaleString()}
-                </span>
-              </div>
-              <Button
-                type="button"
-                className="bg-blue-600 hover:bg-blue-700 px-8"
-                onClick={handleCreateOrder}
-              >
-                Submit Order
-              </Button>
-            </DialogFooter>
+            <OrderForm
+              onSubmit={async (data) => {
+                await addOrder(data);
+                setIsDialogOpen(false);
+              }}
+              onCancel={() => setIsDialogOpen(false)}
+            />
           </DialogContent>
         </Dialog>
       </div>

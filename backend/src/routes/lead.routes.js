@@ -1,5 +1,5 @@
 import express from "express";
-import { checkJWTToken } from "../middleware/index.js";
+import { checkJWTToken, checkPermission } from "../middleware/index.js";
 import {
     getLeads,
     createLead,
@@ -16,15 +16,15 @@ import { authorize } from "../middleware/authorize.js";
 
 const router = express.Router();
 
-router.get("/", checkJWTToken, authorize("Super Admin", "Distributor", "Dealer"), getLeads);
-router.post("/", checkJWTToken, authorize("Super Admin", "Distributor", "Dealer"), createLead);
-router.get("/:id", checkJWTToken, authorize("Super Admin", "Distributor", "Dealer"), getLeadById);
-router.put("/:id", checkJWTToken, authorize("Super Admin", "Distributor", "Dealer"), updateLead);
-router.put("/:id/assign", checkJWTToken, authorize("Super Admin", "Distributor"), assignLead);
-router.put("/:id/status", checkJWTToken, authorize("Super Admin", "Distributor", "Dealer"), updateLeadStatus);
-router.post("/:id/followup", checkJWTToken, authorize("Super Admin", "Distributor", "Dealer"), addLeadFollowUp);
-router.patch("/:id/followup/:followUpId/complete", checkJWTToken, authorize("Super Admin", "Distributor", "Dealer"), markFollowUpCompleted);
-router.post("/:id/convert", checkJWTToken, authorize("Super Admin", "Distributor", "Dealer"), convertLeadToCustomer);
-router.delete("/:id", checkJWTToken, authorize("Super Admin", "Distributor"), deleteLead);
+router.get("/", checkJWTToken, checkPermission("leads", "view"), getLeads);
+router.post("/", checkJWTToken, checkPermission("leads", "create"), createLead);
+router.get("/:id", checkJWTToken, checkPermission("leads", "view"), getLeadById);
+router.put("/:id", checkJWTToken, checkPermission("leads", "edit"), updateLead);
+router.put("/:id/assign", checkJWTToken, checkPermission("leads", "assignToDealers"), assignLead);
+router.put("/:id/status", checkJWTToken, checkPermission("leads", "updateStatus"), updateLeadStatus);
+router.post("/:id/followup", checkJWTToken, checkPermission("leads", "addActivities"), addLeadFollowUp);
+router.patch("/:id/followup/:followUpId/complete", checkJWTToken, checkPermission("leads", "addActivities"), markFollowUpCompleted);
+router.post("/:id/convert", checkJWTToken, checkPermission("leads", "convertToOrder"), convertLeadToCustomer);
+router.delete("/:id", checkJWTToken, checkPermission("leads", "delete"), deleteLead);
 
 export default router;

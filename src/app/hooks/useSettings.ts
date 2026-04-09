@@ -177,3 +177,34 @@ export const useDeleteWarehouse = () => {
         },
     });
 };
+
+// Permissions
+export const usePermissions = () => {
+    return useQuery({
+        queryKey: ["permissions"],
+        queryFn: async () => {
+            const res = await apiClient.get("permissions");
+            return res.data;
+        },
+    });
+};
+
+export const useUpdatePermissions = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ role, permissions, quiet = false }: { role: string; permissions: any; quiet?: boolean }) => {
+            const res = await apiClient.put(`permissions/${role}`, { permissions });
+            return { data: res.data, quiet };
+        },
+        onSuccess: (result: any) => {
+            queryClient.invalidateQueries({ queryKey: ["permissions"] });
+            if (!result.quiet) {
+                toast.success("Permissions updated successfully");
+            }
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || "Failed to update permissions");
+        },
+    });
+};
+

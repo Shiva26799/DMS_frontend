@@ -3,11 +3,11 @@ export const authorize = (...roles) => {
         if (!req.role) {
             return res.status(401).json({ message: "Unauthorized - Role not found" });
         }
-        
+
         if (!roles.includes(req.role)) {
             return res.status(403).json({ message: "Access forbidden: Role unauthorized" });
         }
-        
+
         next();
     };
 };

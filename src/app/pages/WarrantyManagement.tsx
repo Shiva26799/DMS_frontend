@@ -65,7 +65,7 @@ export function WarrantyManagement() {
         machineSerialNumber: formData.productSerial,
         issueDescription: formData.issueDescription
       });
-      
+
       setFormData({
         dealerId: "",
         productId: "",
@@ -96,7 +96,7 @@ export function WarrantyManagement() {
   const openClaims = claims.filter(
     (c) => c.status !== "Closed" && c.status !== "Rejected"
   ).length;
-  const approvedClaims = claims.filter((c) => 
+  const approvedClaims = claims.filter((c) =>
     ["Claim Approved", "Parts Processing", "Parts Dispatched", "Repair & Collection", "Closed"].includes(c.status)
   ).length;
 
@@ -336,42 +336,42 @@ export function WarrantyManagement() {
                 ))
               ) : filteredClaims.length > 0 ? (
                 filteredClaims.map((claim) => (
-                <tr key={claim._id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className="text-sm font-semibold text-blue-600">
-                      {claim.claimNumber}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="text-sm font-medium text-gray-900">{claim.productId?.name || "N/A"}</p>
-                    <p className="text-xs text-gray-500">{claim.productId?.sku}</p>
-                  </td>
-                  <td className="px-6 py-4 text-sm font-mono text-gray-600">
-                    {claim.machineSerialNumber}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {claim.dealerId?.companyName || "N/A"}
-                  </td>
-                  <td className="px-6 py-4">
-                    <StatusBadge status={claim.status} />
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                       <span className="text-xs font-medium text-blue-600">{claim.stageProgress}%</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {new Date(claim.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4">
-                    <Link to={`/warranty/${claim._id}`}>
-                      <Button variant="outline" size="sm" className="hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200">
-                        Process Claim
-                      </Button>
-                    </Link>
-                  </td>
-                </tr>
-              ))) : (
+                  <tr key={claim._id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <span className="text-sm font-semibold text-blue-600">
+                        {claim.claimNumber}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm font-medium text-gray-900">{claim.productId?.name || "N/A"}</p>
+                      <p className="text-xs text-gray-500">{claim.productId?.sku}</p>
+                    </td>
+                    <td className="px-6 py-4 text-sm font-mono text-gray-600">
+                      {claim.machineSerialNumber}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {claim.dealerId?.companyName || "N/A"}
+                    </td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={claim.status} />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-blue-600">{claim.stageProgress}%</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {new Date(claim.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4">
+                      <Link to={`/warranty/${claim._id}`}>
+                        <Button variant="outline" size="sm" className="hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200">
+                          Process Claim
+                        </Button>
+                      </Link>
+                    </td>
+                  </tr>
+                ))) : (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-gray-500 bg-gray-50/50">
                     No warranty claims found matching your criteria.

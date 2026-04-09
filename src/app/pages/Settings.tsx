@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Save, Upload, Building2, Users, Warehouse, Trash2, Edit, Plus, Loader2 } from "lucide-react";
+import { Save, Upload, Building2, Users, Warehouse, Trash2, Edit, Plus, Loader2, ShieldCheck, Check, X, Info, ClipboardList, Package2 } from "lucide-react";
 import { Skeleton } from "../components/ui/skeleton";
+import { useAuth } from "../context/AuthContext";
 
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -31,6 +32,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
+import { Checkbox } from "../components/ui/checkbox";
 import { StatusBadge } from "../components/StatusBadge";
 import { toast } from "sonner";
 import {
@@ -44,7 +46,9 @@ import {
   useSettingsWarehouses,
   useAddWarehouse,
   useUpdateWarehouse,
-  useDeleteWarehouse
+  useDeleteWarehouse,
+  usePermissions,
+  useUpdatePermissions
 } from "../hooks/useSettings";
 import { useDealers } from "../hooks/useDealers";
 
@@ -56,6 +60,8 @@ interface User {
   role: string;
   lastLogin: string;
   dealerId?: string;
+  assignedWarehouses?: string[];
+  dealerViewWarehouses?: string[];
 }
 
 interface Dealer {
@@ -75,7 +81,6 @@ interface WarehouseData {
   adminName: string;
   adminContact: string;
   adminEmail: string;
-  status: "Active" | "Inactive";
 }
 
 export function Settings() {
@@ -83,6 +88,10 @@ export function Settings() {
   const { data: usersData = [], isLoading: isUsersLoading } = useUsers();
   const { data: warehousesData = [], isLoading: isWarehousesLoading } = useSettingsWarehouses();
   const { data: dealers = [], isLoading: isDealersLoading } = useDealers();
+  const { data: permissionsData = [], isLoading: isPermissionsLoading } = usePermissions();
+
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "Super Admin";
 
   const updateCompanyMutation = useUpdateCompanyInfo();
   const updateLogoMutation = useUpdateCompanyLogo();
@@ -92,6 +101,7 @@ export function Settings() {
   const addWarehouseMutation = useAddWarehouse();
   const updateWarehouseMutation = useUpdateWarehouse();
   const deleteWarehouseMutation = useDeleteWarehouse();
+  const updatePermissionsMutation = useUpdatePermissions();
 
   // Company Information State
   const [companyInfo, setCompanyInfo] = useState({
@@ -126,9 +136,45 @@ export function Settings() {
     phone: "",
     role: "",
     password: "",
+    assignedWarehouses: [] as string[],
+    dealerViewWarehouses: [] as string[],
   });
 
   // Warehouse Management State
+  // Mapping Dialog State (New)
+  const [isMappingDialogOpen, setIsMappingDialogOpen] = useState(false);
+  const [mappingUser, setMappingUser] = useState<User | null>(null);
+  const [mappingFormData, setMappingFormData] = useState({
+    assignedWarehouses: [] as string[],
+    dealerViewWarehouses: [] as string[],
+  });
+
+  const handleOpenMappingDialog = (user: User) => {
+    setMappingUser(user);
+    setMappingFormData({
+      assignedWarehouses: user.assignedWarehouses || [],
+      dealerViewWarehouses: user.dealerViewWarehouses || [],
+    });
+    setIsMappingDialogOpen(true);
+  };
+
+  const handleSaveMapping = () => {
+    if (mappingUser) {
+      updateUserMutation.mutate({
+        id: mappingUser._id,
+        data: {
+          assignedWarehouses: mappingFormData.assignedWarehouses,
+          dealerViewWarehouses: mappingFormData.dealerViewWarehouses,
+        }
+      }, {
+        onSuccess: () => {
+          setIsMappingDialogOpen(false);
+          setMappingUser(null);
+        }
+      });
+    }
+  };
+
   const [isWarehouseDialogOpen, setIsWarehouseDialogOpen] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<WarehouseData | null>(null);
   const [warehouseForm, setWarehouseForm] = useState({
@@ -140,10 +186,18 @@ export function Settings() {
     adminName: "",
     adminContact: "",
     adminEmail: "",
-    status: "Active" as "Active" | "Inactive",
   });
 
-  const loading = isCompanyLoading || isUsersLoading || isWarehousesLoading || isDealersLoading;
+  // Permissions State
+  const [localPermissions, setLocalPermissions] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (permissionsData.length > 0) {
+      setLocalPermissions(permissionsData);
+    }
+  }, [permissionsData]);
+
+  const loading = isCompanyLoading || isUsersLoading || isWarehousesLoading || isDealersLoading || isPermissionsLoading;
 
   // Company Information Handlers
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -183,6 +237,8 @@ export function Settings() {
         phone: user.phone,
         role: user.role,
         password: "", // Keep password empty when editing
+        assignedWarehouses: user.assignedWarehouses || [],
+        dealerViewWarehouses: user.dealerViewWarehouses || [],
       });
     } else {
       setEditingUser(null);
@@ -192,6 +248,8 @@ export function Settings() {
         phone: "",
         role: "",
         password: "",
+        assignedWarehouses: [],
+        dealerViewWarehouses: [],
       });
     }
     setIsUserDialogOpen(true);
@@ -234,15 +292,14 @@ export function Settings() {
     if (warehouse) {
       setEditingWarehouse(warehouse);
       setWarehouseForm({
-        name: warehouse.name,
-        address: warehouse.address,
-        city: warehouse.city,
-        state: warehouse.state,
-        pincode: warehouse.pincode,
-        adminName: warehouse.adminName,
-        adminContact: warehouse.adminContact,
-        adminEmail: warehouse.adminEmail,
-        status: warehouse.status,
+        name: warehouse.name || "",
+        address: warehouse.address || "",
+        city: warehouse.city || "",
+        state: warehouse.state || "",
+        pincode: warehouse.pincode || "",
+        adminName: warehouse.adminName || "",
+        adminContact: warehouse.adminContact || "",
+        adminEmail: warehouse.adminEmail || "",
       });
     } else {
       setEditingWarehouse(null);
@@ -255,7 +312,6 @@ export function Settings() {
         adminName: "",
         adminContact: "",
         adminEmail: "",
-        status: "Active",
       });
     }
     setIsWarehouseDialogOpen(true);
@@ -285,6 +341,100 @@ export function Settings() {
     }
   };
 
+  const handleTogglePermission = (role: string, module: string, actionKey: string) => {
+    setLocalPermissions((prev) =>
+      prev.map((p) => {
+        if (p.role === role) {
+          const updatedPermissions = { ...p.permissions };
+          const modulePerms = { ...updatedPermissions[module] };
+          modulePerms[actionKey] = !modulePerms[actionKey];
+          updatedPermissions[module] = modulePerms;
+          return { ...p, permissions: updatedPermissions };
+        }
+        return p;
+      })
+    );
+  };
+
+  const handleSavePermissions = () => {
+    // Save for each role but only show toast for the last one
+    localPermissions.forEach((p, index) => {
+      const isLast = index === localPermissions.length - 1;
+      updatePermissionsMutation.mutate({ 
+        role: p.role, 
+        permissions: p.permissions, 
+        quiet: !isLast 
+      });
+    });
+  };
+
+  const renderPermissionCell = (role: string, module: string, actionKey: string) => {
+    // Super Admin always has full access regardless of data
+    if (role === "Super Admin") return renderIcon(true);
+    
+    const roleData = localPermissions.find((p) => p.role === role);
+    const val = roleData?.permissions?.[module]?.[actionKey];
+
+    if (isSuperAdmin && role !== "Super Admin") {
+      return (
+        <div className="flex justify-center">
+          <input
+            type="checkbox"
+            checked={!!val}
+            onChange={() => handleTogglePermission(role, module, actionKey)}
+            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+          />
+        </div>
+      );
+    }
+
+    return renderIcon(val);
+  };
+
+  const leadPermissions = [
+    { label: "View Leads", key: "view", module: "leads" },
+    { label: "Create New Leads", key: "create", module: "leads" },
+    { label: "Edit Lead Details", key: "edit", module: "leads" },
+    { label: "Assign Leads to Dealers", key: "assignToDealers", module: "leads" },
+    { label: "Update Lead Status", key: "updateStatus", module: "leads" },
+    { label: "Add Follow-up / Activities", key: "addActivities", module: "leads" },
+    { label: "Convert Lead to Order", key: "convertToOrder", module: "leads" },
+    { label: "Delete Lead Records", key: "delete", module: "leads" },
+  ];
+
+  const dealerPermissions = [
+    { label: "View Dealer Network", key: "view", module: "dealers" },
+    { label: "Onboard New Dealers", key: "onboard", module: "dealers" },
+    { label: "Approve Dealer KYC", key: "approveKYC", module: "dealers" },
+    { label: "Edit Dealer Profiles", key: "editProfiles", module: "dealers" },
+    { label: "Deactivate Dealer Account", key: "deactivate", module: "dealers" },
+  ];
+
+  const orderPermissions = [
+    { label: "View Orders", key: "view", module: "orders" },
+    { label: "Create New Orders", key: "create", module: "orders" },
+    { label: "Upload/Edit Order Documents", key: "uploadDocs", module: "orders" },
+    { label: "Update Delivery Status", key: "updateDelivery", module: "orders" },
+    { label: "Cancel Orders", key: "cancel", module: "orders" },
+    { label: "Approve Payments & Orders", key: "approvePayment", module: "orders" },
+    { label: "Upload Lovol Invoices", key: "uploadLovolInvoice", module: "orders" },
+    { label: "Request Documents", key: "requestDocs", module: "orders" },
+    { label: "Status Override", key: "statusOverride", module: "orders" },
+  ];
+
+  const inventoryPermissions = [
+    { label: "View Own Stock", key: "viewOwn", module: "inventory" },
+    { label: "View Warehouse Stock", key: "viewWarehouses", module: "inventory" },
+    { label: "View Subordinate Stock", key: "viewSubordinates", module: "inventory" },
+    { label: "Manage Inventory (Adjust)", key: "manage", module: "inventory" },
+  ];
+
+  const renderIcon = (val: boolean | string) => {
+    if (val === true) return <Check className="w-5 h-5 text-green-500 mx-auto" />;
+    if (val === false) return <X className="w-5 h-5 text-red-500 mx-auto" />;
+    return <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">{val}</span>;
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -297,7 +447,7 @@ export function Settings() {
 
       {/* Tabs */}
       <Tabs defaultValue="company" className="space-y-6">
-        <TabsList className="grid w-full max-w-md grid-cols-3">
+        <TabsList className="grid w-full max-w-2xl grid-cols-4">
           <TabsTrigger value="company" className="flex items-center gap-2">
             <Building2 className="w-4 h-4" />
             Company Info
@@ -309,6 +459,10 @@ export function Settings() {
           <TabsTrigger value="warehouses" className="flex items-center gap-2">
             <Warehouse className="w-4 h-4" />
             Warehouses
+          </TabsTrigger>
+          <TabsTrigger value="permissions" className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4" />
+            Permissions
           </TabsTrigger>
         </TabsList>
 
@@ -688,11 +842,10 @@ export function Settings() {
                             <Warehouse className="w-5 h-5 text-blue-600" />
                           </div>
                           <div>
-                            <h3 className="font-semibold text-gray-900">
-                              {warehouse.name}
-                            </h3>
-                            <StatusBadge status={warehouse.status} />
-                          </div>
+                             <h3 className="font-semibold text-gray-900">
+                               {warehouse.name}
+                             </h3>
+                           </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -751,6 +904,256 @@ export function Settings() {
               )}
             </div>
 
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="permissions" className="space-y-6">
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Role Permissions Overview
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Review and manage the access rights for each system role
+                </p>
+              </div>
+              {isSuperAdmin ? (
+                <Button 
+                  onClick={handleSavePermissions}
+                  disabled={updatePermissionsMutation.isPending}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Changes
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+                  <Info className="w-3 h-3" />
+                  Read-only Overview
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-8">
+              {/* Lead Management Permissions */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                    <Users className="w-4 h-4 text-orange-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">Lead Management</h3>
+                </div>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead className="w-[300px]">Permission Unit</TableHead>
+                        <TableHead className="text-center">Super Admin</TableHead>
+                        <TableHead className="text-center">Distributor</TableHead>
+                        <TableHead className="text-center">Dealer</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {leadPermissions.map((perm, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-medium text-gray-700">{perm.label}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Super Admin", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Distributor", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Dealer", perm.module, perm.key)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* Dealer Management Permissions */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Building2 className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">Dealer Management</h3>
+                </div>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead className="w-[300px]">Permission Unit</TableHead>
+                        <TableHead className="text-center">Super Admin</TableHead>
+                        <TableHead className="text-center">Distributor</TableHead>
+                        <TableHead className="text-center">Dealer</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dealerPermissions.map((perm, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-medium text-gray-700">{perm.label}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Super Admin", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Distributor", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Dealer", perm.module, perm.key)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* Order Management Permissions */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                    <ClipboardList className="w-4 h-4 text-green-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">Order Management</h3>
+                </div>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead className="w-[300px]">Permission Unit</TableHead>
+                        <TableHead className="text-center">Super Admin</TableHead>
+                        <TableHead className="text-center">Distributor</TableHead>
+                        <TableHead className="text-center">Dealer</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {orderPermissions.map((perm, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-medium text-gray-700">{perm.label}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Super Admin", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Distributor", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Dealer", perm.module, perm.key)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* Inventory Management Permissions */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <Package2 className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">Inventory Management</h3>
+                </div>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead className="w-[300px]">Permission Unit</TableHead>
+                        <TableHead className="text-center">Super Admin</TableHead>
+                        <TableHead className="text-center">Distributor</TableHead>
+                        <TableHead className="text-center">Dealer</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {inventoryPermissions.map((perm, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-medium text-gray-700">{perm.label}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Super Admin", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Distributor", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Dealer", perm.module, perm.key)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* Distributor Warehouse Mapping Overview (New) */}
+              {isSuperAdmin && (
+                <div className="mt-8 border-t pt-8">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <Warehouse className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <h3 className="font-semibold text-gray-900">Distributor Warehouse Mapping</h3>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Overview of active warehouse assignments for each distributor. To modify, use the User Management tab.
+                  </p>
+                  <div className="border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-gray-50">
+                        <TableRow>
+                          <TableHead>Distributor Name</TableHead>
+                          <TableHead>Assigned Warehouses (Own View)</TableHead>
+                          <TableHead>Dealer Visibility Set</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {usersData
+                          .filter((u: any) => u.role === "Distributor")
+                          .map((u: any) => (
+                            <TableRow key={u._id}>
+                              <TableCell className="font-medium">{u.name}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {u.assignedWarehouses?.length > 0 ? (
+                                    u.assignedWarehouses.map((whId: string) => {
+                                      const wh = warehousesData.find((w: any) => w._id === whId);
+                                      return (
+                                        <span key={whId} className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-100">
+                                          {wh?.name || "Unknown"}
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    <span className="text-gray-400 text-xs italic">No warehouses assigned</span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {u.dealerViewWarehouses?.length > 0 ? (
+                                    u.dealerViewWarehouses.map((whId: string) => {
+                                      const wh = warehousesData.find((w: any) => w._id === whId);
+                                      return (
+                                        <span key={whId} className="px-2 py-0.5 bg-green-50 text-green-700 text-xs rounded-full border border-green-100">
+                                          {wh?.name || "Unknown"}
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    <span className="text-gray-400 text-xs italic">No visibility range set</span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                  onClick={() => handleOpenMappingDialog(u)}
+                                >
+                                  <Edit className="w-3.5 h-3.5 mr-1" />
+                                  Edit Mapping
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        {usersData.filter((u: any) => u.role === "Distributor").length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center py-4 text-gray-500 text-sm">
+                              No distributors found in the system.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 italic text-sm text-gray-500">
+                Note: Standard users (Distributors and Dealers) only have visibility into data they are owners of or are assigned to within their specific region/cluster.
+              </div>
+            </div>
           </Card>
         </TabsContent>
       </Tabs>
@@ -847,6 +1250,76 @@ export function Settings() {
                 className="mt-1"
               />
             </div>
+
+            {userForm.role === "Distributor" && (
+              <div className="space-y-4 border-t pt-4 mt-2">
+                <h4 className="font-semibold text-sm text-blue-900 flex items-center gap-2">
+                  <Warehouse className="w-4 h-4" /> Warehouse Visibility Mapping
+                </h4>
+                
+                <div className="space-y-2">
+                  <Label className="text-xs uppercase tracking-wider text-gray-500 font-bold">
+                    Assigned Warehouses (Distributor View)
+                  </Label>
+                  <p className="text-[10px] text-gray-400 -mt-1">Select which warehouses this distributor can personally monitor.</p>
+                  <div className="grid grid-cols-2 gap-2 mt-1 max-h-32 overflow-y-auto p-2 border rounded-md bg-gray-50">
+                    {warehousesData.map((wh: any) => (
+                      <div key={wh._id} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`wh-assign-${wh._id}`}
+                          checked={userForm.assignedWarehouses.includes(wh._id)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setUserForm(prev => ({
+                              ...prev,
+                              assignedWarehouses: checked
+                                ? [...prev.assignedWarehouses, wh._id]
+                                : prev.assignedWarehouses.filter(id => id !== wh._id)
+                            }))
+                          }}
+                          className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300"
+                        />
+                        <label htmlFor={`wh-assign-${wh._id}`} className="text-xs truncate" title={wh.name}>
+                          {wh.name}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs uppercase tracking-wider text-gray-500 font-bold">
+                    Dealer View Set (Subordinate View)
+                  </Label>
+                  <p className="text-[10px] text-gray-400 -mt-1">Select the subset of warehouses visible to all dealers under this distributor.</p>
+                  <div className="grid grid-cols-2 gap-2 mt-1 max-h-32 overflow-y-auto p-2 border rounded-md bg-gray-50">
+                    {warehousesData.map((wh: any) => (
+                      <div key={wh._id} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`wh-dealer-${wh._id}`}
+                          checked={userForm.dealerViewWarehouses.includes(wh._id)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setUserForm(prev => ({
+                              ...prev,
+                              dealerViewWarehouses: checked
+                                ? [...prev.dealerViewWarehouses, wh._id]
+                                : prev.dealerViewWarehouses.filter(id => id !== wh._id)
+                            }))
+                          }}
+                          className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300"
+                        />
+                        <label htmlFor={`wh-dealer-${wh._id}`} className="text-xs truncate" title={wh.name}>
+                          {wh.name}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -1008,26 +1481,6 @@ export function Settings() {
                     className="mt-1"
                   />
                 </div>
-
-                {editingWarehouse && (
-                  <div>
-                    <Label htmlFor="wh-status">Status</Label>
-                    <Select
-                      value={warehouseForm.status}
-                      onValueChange={(value: "Active" | "Inactive") =>
-                        setWarehouseForm({ ...warehouseForm, status: value })
-                      }
-                    >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Active">Active</SelectItem>
-                        <SelectItem value="Inactive">Inactive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -1054,6 +1507,83 @@ export function Settings() {
               }
             >
               {editingWarehouse ? "Update Warehouse" : "Add Warehouse"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Warehouse Visibility Mapping Dialog (Interactive) */}
+      <Dialog open={isMappingDialogOpen} onOpenChange={setIsMappingDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Configure Warehouse Visibility</DialogTitle>
+            <DialogDescription>
+              Assign warehouses to <strong>{mappingUser?.name}</strong> and define which ones are visible to their dealer network.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-6">
+            {/* Distributor's own visibility */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-gray-900">Distributor's Warehouse View</h4>
+              <p className="text-xs text-gray-500">Select warehouses this distributor can monitor directly.</p>
+              <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto p-2 border rounded-md">
+                {warehousesData.map((wh: any) => (
+                  <div key={wh._id} className="flex items-center space-x-2">
+                    <Checkbox 
+                      id={`own-${wh._id}`} 
+                      checked={mappingFormData.assignedWarehouses.includes(wh._id)}
+                      onCheckedChange={(checked) => {
+                        const current = [...mappingFormData.assignedWarehouses];
+                        if (checked) {
+                          setMappingFormData({ ...mappingFormData, assignedWarehouses: [...current, wh._id] });
+                        } else {
+                          setMappingFormData({ ...mappingFormData, assignedWarehouses: current.filter(id => id !== wh._id) });
+                        }
+                      }}
+                    />
+                    <label htmlFor={`own-${wh._id}`} className="text-sm font-medium leading-none cursor-pointer">
+                      {wh.name}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Dealers' visibility set */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-gray-900">Dealer Visibility Range</h4>
+              <p className="text-xs text-gray-500">Define which warehouses subordinates (dealers) of this distributor can see.</p>
+              <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto p-2 border rounded-md">
+                {warehousesData.map((wh: any) => (
+                  <div key={wh._id} className="flex items-center space-x-2">
+                    <Checkbox 
+                      id={`dealer-${wh._id}`} 
+                      checked={mappingFormData.dealerViewWarehouses.includes(wh._id)}
+                      onCheckedChange={(checked) => {
+                        const current = [...mappingFormData.dealerViewWarehouses];
+                        if (checked) {
+                          setMappingFormData({ ...mappingFormData, dealerViewWarehouses: [...current, wh._id] });
+                        } else {
+                          setMappingFormData({ ...mappingFormData, dealerViewWarehouses: current.filter(id => id !== wh._id) });
+                        }
+                      }}
+                    />
+                    <label htmlFor={`dealer-${wh._id}`} className="text-sm font-medium leading-none cursor-pointer text-blue-600">
+                      {wh.name}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsMappingDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveMapping} className="bg-blue-600 hover:bg-blue-700">
+              Save Configuration
             </Button>
           </DialogFooter>
         </DialogContent>

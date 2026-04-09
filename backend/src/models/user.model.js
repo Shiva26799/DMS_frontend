@@ -9,6 +9,10 @@ const userSchema = new mongoose.Schema(
         role: { type: String, enum: ["Super Admin", "Distributor", "Dealer"], default: "Super Admin" },
         lastLogin: { type: Date },
         dealerId: { type: mongoose.Schema.Types.ObjectId, ref: "Dealer" },
+        // Warehouse visibility for Distributors
+        assignedWarehouses: [{ type: mongoose.Schema.Types.ObjectId, ref: "Warehouse" }],
+        // Warehouse visibility for Dealers under this Distributor
+        dealerViewWarehouses: [{ type: mongoose.Schema.Types.ObjectId, ref: "Warehouse" }],
     },
     { 
         timestamps: true,

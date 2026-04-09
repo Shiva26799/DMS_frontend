@@ -10,7 +10,6 @@ const warehouseSchema = new mongoose.Schema(
         adminName: { type: String, required: true },
         adminContact: { type: String, required: true },
         adminEmail: { type: String, required: true },
-        status: { type: String, enum: ["Active", "Inactive"], default: "Active" },
     },
     { timestamps: true }
 );

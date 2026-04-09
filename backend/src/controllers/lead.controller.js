@@ -17,7 +17,7 @@ export const getLeads = async (req, res) => {
             const dealers = await Dealer.find({ distributorId: user._id });
             const dealerIds = dealers.map(d => d._id);
             // Show leads for their dealers OR leads assigned directly to the distributor
-            query = { 
+            query = {
                 $or: [
                     { dealerId: { $in: dealerIds } },
                     { assignedTo: user._id }
@@ -61,7 +61,7 @@ export const createLead = async (req, res) => {
             leadData.metadata.DealerName = user.name;
             leadData.assignedTo = user._id; // Auto-assign to self
         } else if (user.role === "Distributor") {
-            leadData.source = "Web"; 
+            leadData.source = "Web";
             leadData.metadata.DistributorName = user.name;
             if (dealerId) {
                 const dealer = await Dealer.findOne({ _id: dealerId, distributorId: user._id });
@@ -105,7 +105,7 @@ export const getLeadById = async (req, res) => {
         const lead = await Lead.findById(req.params.id).populate("dealerId", "companyName ownerName");
         if (!lead) return res.status(404).json({ message: "Lead not found" });
 
-        if (user.role === "Dealer" && String(lead.dealerId?._id || lead.dealerId) !== String(user.dealerId)) {
+        if (user.role === "Dealer" && String(lead.dealerId) !== String(user.dealerId)) {
             return res.status(403).json({ message: "Unauthorized access to this lead" });
         }
 
@@ -176,16 +176,16 @@ export const assignLead = async (req, res) => {
         if (user.role === "Distributor") {
             // Distributor assigning to themselves
             if (!dealerId || dealerId === "self") {
-                 updateData.assignedTo = user._id;
-                 updateData.status = "Assigned";
-                 updateData.$push = {
+                updateData.assignedTo = user._id;
+                updateData.status = "Assigned";
+                updateData.$push = {
                     activityLog: {
                         action: "Lead Assigned",
                         note: `Assigned to self (Distributor)`,
                         performedBy: user.name || "Distributor",
                         timestamp: new Date(),
                     }
-                 };
+                };
             } else {
                 // Distributor assigning to a dealer - verify ownership
                 const dealer = await Dealer.findOne({ _id: dealerId, distributorId: user._id });

@@ -99,6 +99,8 @@ export interface Order {
   dealerId: string;
   product: string;
   productId: string;
+  orderSource?: "Warehouse" | "Own Stock";
+  warehouseId?: string;
   quantity: number;
   products?: Array<{
     productId: any;

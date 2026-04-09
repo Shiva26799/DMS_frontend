@@ -87,6 +87,9 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       })) || [],
       orderDate: o.orderDate ? new Date(o.orderDate).toISOString().split("T")[0] : (o.createdAt ? o.createdAt.split("T")[0] : new Date().toISOString().split("T")[0]),
       paymentStatus: o.paymentStatus || "Pending",
+      orderSource: o.orderSource || "Warehouse",
+      readOnly: o.readOnly || false,
+      createdBy: o.createdBy || null,
     };
   };
 

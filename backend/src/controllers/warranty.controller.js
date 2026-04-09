@@ -16,7 +16,7 @@ export const createClaim = async (req, res) => {
 
         // Try to find the original order for this machine serial number to auto-propulate
         const originalOrder = await Order.findOne({ "warrantyDetails.machineSerialNumber": machineSerialNumber });
-        
+
         const claimNumber = `WC-2026-${Date.now().toString().slice(-6)}`;
 
         const newClaim = new WarrantyClaim({

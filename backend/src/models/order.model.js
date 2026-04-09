@@ -4,6 +4,14 @@ const orderSchema = new mongoose.Schema(
     {
         orderNumber: { type: String, required: true, unique: true },
         dealerId: { type: mongoose.Schema.Types.ObjectId, ref: "Dealer", required: true },
+        warehouseId: { type: mongoose.Schema.Types.ObjectId, ref: "Warehouse" },
+        orderSource: { 
+            type: String, 
+            enum: ["Warehouse", "Own Stock"], 
+            default: "Warehouse" 
+        },
+        assignedDistributorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
         metadata: {
             DistributorName: { type: String },
             DealerName: { type: String }
@@ -27,21 +35,19 @@ const orderSchema = new mongoose.Schema(
             estimatedDeliveryDate: { type: Date }
         },
 
-        poDocument: {
-            url: { type: String },
-            uploadedAt: { type: Date }
-        },
-        paymentDocument: {
-            url: { type: String },
-            uploadedAt: { type: Date }
-        },
-        lovolInvoiceDocument: {
-            url: { type: String },
-            uploadedAt: { type: Date }
-        },
-        dealerInvoiceDocument: {
-            url: { type: String },
-            uploadedAt: { type: Date }
+        documents: {
+            po: { url: { type: String }, uploadedAt: { type: Date } },
+            payment: { url: { type: String }, uploadedAt: { type: Date } },
+            lovolInvoice: { url: { type: String }, uploadedAt: { type: Date } },
+            dealerInvoice: { url: { type: String }, uploadedAt: { type: Date } },
+            warranty: { url: { type: String }, uploadedAt: { type: Date } },
+            additional: [
+                {
+                    name: { type: String },
+                    url: { type: String },
+                    uploadedAt: { type: Date, default: Date.now }
+                }
+            ]
         },
 
         warrantyDetails: {
@@ -50,11 +56,7 @@ const orderSchema = new mongoose.Schema(
             warrantyStartDate: { type: Date },
             warrantyEndDate: { type: Date },
             warrantyMonths: { type: Number },
-            maintenanceMonths: { type: Number },
-            warrantyDocument: {
-                url: { type: String },
-                uploadedAt: { type: Date }
-            }
+            maintenanceMonths: { type: Number }
         },
 
         activityLog: [
@@ -63,13 +65,6 @@ const orderSchema = new mongoose.Schema(
                 note: { type: String },
                 performedBy: { type: String },
                 timestamp: { type: Date, default: Date.now }
-            }
-        ],
-        additionalDocuments: [
-            {
-                name: { type: String },
-                url: { type: String },
-                uploadedAt: { type: Date, default: Date.now }
             }
         ]
     },

@@ -95,14 +95,14 @@ export function WarrantyProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <WarrantyContext.Provider value={{ 
-      claims, 
-      isLoading, 
-      fetchClaims, 
-      getClaim, 
-      createClaim, 
-      updateClaimStatus, 
-      uploadMedia 
+    <WarrantyContext.Provider value={{
+      claims,
+      isLoading,
+      fetchClaims,
+      getClaim,
+      createClaim,
+      updateClaimStatus,
+      uploadMedia
     }}>
       {children}
     </WarrantyContext.Provider>

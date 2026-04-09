@@ -1,11 +1,13 @@
 import { Order } from "../models/order.model.js";
 import { Dealer } from "../models/dealer.model.js";
 import { Product } from "../models/product.model.js";
+import { Lead } from "../models/lead.model.js";
+import { deductStockFromOrder } from "../services/inventory.service.js";
 
 // Create a new order
 export const createOrder = async (req, res) => {
     try {
-        const { dealerId, products } = req.body; // products: [{ productId, quantity, price }]
+        const { dealerId, warehouseId, orderSource, products } = req.body; // products: [{ productId, quantity, price }]
 
         const dealer = await Dealer.findById(dealerId);
         if (!dealer) {
@@ -20,7 +22,6 @@ export const createOrder = async (req, res) => {
             if (!product) {
                 return res.status(404).json({ message: `Product ${item.productId} not found` });
             }
-            // Use custom price if provided, otherwise fallback to product catalog price
             const price = Number(item.price) || product.price;
             const quantity = Number(item.quantity) || 1;
             totalValue += price * quantity;
@@ -34,21 +35,31 @@ export const createOrder = async (req, res) => {
 
         const orderNumber = `ORD-2026-${Date.now().toString().slice(-6)}`;
 
+        const isOwnStock = orderSource === "Own Stock";
+        const initialStage = "PO Upload";
+        const initialProgress = 10;
+
+        // For Own Stock, we might eventually skip some middle stages or allow faster approval
+
         const newOrder = new Order({
             orderNumber,
             dealerId,
+            warehouseId: isOwnStock ? undefined : warehouseId,
+            orderSource: orderSource || "Warehouse",
+            assignedDistributorId: dealer.distributorId,
+            createdBy: req.user._id,
             metadata: {
                 DealerName: dealer.companyName,
                 DistributorName: dealer.metadata?.DistributorName
             },
             products: itemizedProducts,
             totalValue,
-            currentStage: "PO Upload",
-            stageProgress: 10,
+            currentStage: initialStage,
+            stageProgress: initialProgress,
             activityLog: [{
                 action: "Order Created",
-                note: `Order created with ${itemizedProducts.length} items. Total Value: ₹${totalValue}`,
-                performedBy: "System"
+                note: `Order created (${orderSource || "Warehouse"}). Total Value: ₹${totalValue}`,
+                performedBy: req.user?.name || "System"
             }]
         });
 
@@ -106,14 +117,22 @@ export const getOrderById = async (req, res) => {
             return res.status(403).json({ message: "Unauthorized access to this order." });
         }
 
+        let readOnly = false;
+
         if (user.role === "Distributor") {
             const dealer = await Dealer.findOne({ _id: order.dealerId, distributorId: user._id });
             if (!dealer) {
                 return res.status(403).json({ message: "Unauthorized access to this order (not your dealer)." });
             }
+            // Distributors get read-only unless they are the creator
+            if (!order.createdBy || String(order.createdBy) !== String(user._id)) {
+                readOnly = true;
+            }
         }
 
-        res.json(order);
+        const orderObj = order.toObject();
+        orderObj.readOnly = readOnly;
+        res.json(orderObj);
     } catch (error) {
         console.error("Fetch order by ID error:", error);
         res.status(500).json({ message: "Error fetching order", error: error.message });
@@ -132,7 +151,8 @@ export const uploadPODocument = async (req, res) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
-        order.poDocument = {
+        if (!order.documents) order.documents = {};
+        order.documents.po = {
             url: req.file.location,
             uploadedAt: new Date()
         };
@@ -168,7 +188,8 @@ export const uploadPaymentDocument = async (req, res) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
-        order.paymentDocument = {
+        if (!order.documents) order.documents = {};
+        order.documents.payment = {
             url: req.file.location,
             uploadedAt: new Date()
         };
@@ -198,6 +219,12 @@ export const approveOrder = async (req, res) => {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
+        // Permission check: Super Admin or the concerned Dealer
+        const isDealer = req.user.role === "Dealer";
+        if (isDealer && String(order.dealerId) !== String(req.user.dealerId)) {
+            return res.status(403).json({ message: "Unauthorized: You can only approve payments for your own orders." });
+        }
+
         order.paymentStatus = "Paid";
         order.currentStage = "Order Approval";
         order.stageProgress = 40; // End of Circle 3
@@ -221,12 +248,26 @@ export const finalizeOrderApproval = async (req, res) => {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
-        order.currentStage = "Invoice Generation";
-        order.stageProgress = 55; // End of Circle 4
+        // Permission check: Super Admin or the concerned Dealer (if Own Stock)
+        const isDealer = req.user.role === "Dealer";
+        if (isDealer && String(order.dealerId) !== String(req.user.dealerId)) {
+            return res.status(403).json({ message: "Unauthorized." });
+        }
+
+        const isOwnStock = order.orderSource === "Own Stock";
+
+        // For Own Stock, skip Lovol Invoicing and go to Delivery (where Super Admin uploads tracking)
+        if (isOwnStock) {
+            order.currentStage = "Delivery";
+            order.stageProgress = 75;
+        } else {
+            order.currentStage = "Invoice Generation";
+            order.stageProgress = 55;
+        }
 
         order.activityLog.push({
             action: "Order Officially Approved",
-            note: `Order authorized and moved to invoicing by ${req.user.name}`,
+            note: `Order authorized by ${req.user.name}. Stage moved to ${order.currentStage}.`,
             performedBy: req.user.name
         });
 
@@ -245,7 +286,8 @@ export const uploadLovolInvoice = async (req, res) => {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
-        order.lovolInvoiceDocument = {
+        if (!order.documents) order.documents = {};
+        order.documents.lovolInvoice = {
             url: req.file.location,
             uploadedAt: new Date()
         };
@@ -275,7 +317,8 @@ export const uploadDealerInvoice = async (req, res) => {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
-        order.dealerInvoiceDocument = {
+        if (!order.documents) order.documents = {};
+        order.documents.dealerInvoice = {
             url: req.file.location,
             uploadedAt: new Date()
         };
@@ -308,9 +351,20 @@ export const updateDeliveryStatus = async (req, res) => {
         };
 
         order.deliveryStatus = "Dispatched";
-
-        // Progress increases slightly to reflect dispatch, but stays in Delivery circle
         order.stageProgress = 80;
+
+        try {
+            // Trigger Stock Deduction
+            await deductStockFromOrder(order._id);
+            order.activityLog.push({
+                action: "Stock Deducted",
+                note: `Inventory successfully updated for ${order.orderSource} sources.`,
+                performedBy: "System"
+            });
+        } catch (stockError) {
+            console.error("Stock deduction failed during dispatch:", stockError);
+            return res.status(400).json({ message: `Dispatch failed: ${stockError.message}` });
+        }
 
         order.activityLog.push({
             action: "Order Dispatched",
@@ -389,7 +443,8 @@ export const registerWarranty = async (req, res) => {
         };
 
         if (req.file) {
-            order.warrantyDetails.warrantyDocument = {
+            if (!order.documents) order.documents = {};
+            order.documents.warranty = {
                 url: req.file.location,
                 uploadedAt: new Date()
             };
@@ -477,25 +532,24 @@ export const uploadAdditionalDocument = async (req, res) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
-        if (!order.additionalDocuments) {
-            order.additionalDocuments = [];
-        }
+        if (!order.documents) order.documents = {};
+        if (!order.documents.additional) order.documents.additional = [];
 
-        const existingIndex = order.additionalDocuments.findIndex(d => d.name === name);
+        const existingIndex = order.documents.additional.findIndex(d => d.name === name);
         if (existingIndex !== -1) {
-            order.additionalDocuments[existingIndex] = {
+            order.documents.additional[existingIndex] = {
                 name,
                 url: req.file.location,
                 uploadedAt: new Date()
             };
-            order.markModified("additionalDocuments");
+            order.markModified("documents.additional");
             order.activityLog.push({
                 action: "Additional Document Updated",
                 note: `Document "${name}" updated by ${req.user?.name || "User"}`,
                 performedBy: req.user?.name || "User"
             });
         } else {
-            order.additionalDocuments.push({
+            order.documents.additional.push({
                 name: name || req.file.originalname,
                 url: req.file.location,
                 uploadedAt: new Date()
@@ -524,17 +578,17 @@ export const deleteAdditionalDocument = async (req, res) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
-        if (!order.additionalDocuments) {
+        if (!order.documents?.additional || order.documents.additional.length === 0) {
             return res.status(400).json({ message: "No additional documents found" });
         }
 
-        const docIndex = order.additionalDocuments.findIndex(d => d.name === name);
+        const docIndex = order.documents.additional.findIndex(d => d.name === name);
         if (docIndex === -1) {
             return res.status(404).json({ message: "Document not found" });
         }
 
-        order.additionalDocuments.splice(docIndex, 1);
-        order.markModified("additionalDocuments");
+        order.documents.additional.splice(docIndex, 1);
+        order.markModified("documents.additional");
 
         order.activityLog.push({
             action: "Additional Document Deleted",
@@ -559,20 +613,14 @@ export const deletePrimaryDocument = async (req, res) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
-        const fieldMap = {
-            po: "poDocument",
-            payment: "paymentDocument",
-            lovolInvoice: "lovolInvoiceDocument",
-            dealerInvoice: "dealerInvoiceDocument"
-        };
-
-        const fieldName = fieldMap[type];
-        if (!fieldName || !order[fieldName]) {
+        const validTypes = ["po", "payment", "lovolInvoice", "dealerInvoice", "warranty"];
+        if (!validTypes.includes(type) || !order.documents?.[type]) {
             return res.status(400).json({ message: "Invalid document type or document not found" });
         }
 
         const docName = type.toUpperCase();
-        order[fieldName] = undefined;
+        order.documents[type] = undefined;
+        order.markModified("documents");
 
         order.activityLog.push({
             action: `${docName} Deleted`,
@@ -597,10 +645,11 @@ export const requestDocument = async (req, res) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
-        // Add to additionalDocuments as a placeholder if name provided
+        // Add to documents.additional as a placeholder if name provided
         if (name) {
-            if (!order.additionalDocuments) order.additionalDocuments = [];
-            order.additionalDocuments.push({
+            if (!order.documents) order.documents = {};
+            if (!order.documents.additional) order.documents.additional = [];
+            order.documents.additional.push({
                 name,
                 url: null, // Placeholder
                 uploadedAt: new Date()
@@ -618,5 +667,68 @@ export const requestDocument = async (req, res) => {
     } catch (error) {
         console.error("Request document error:", error);
         res.status(500).json({ message: "Error requesting document", error: error.message });
+    }
+};
+// Create order from a lead (Conversion)
+export const createOrderFromLead = async (req, res) => {
+    try {
+        const { leadId, warehouseId, orderSource } = req.body;
+        const lead = await Lead.findById(leadId);
+        if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+        const dealer = await Dealer.findById(lead.dealerId);
+        if (!dealer) return res.status(404).json({ message: "Dealer not found for this lead" });
+
+        // Find product price if possible, or use a default
+        const product = await Product.findOne({ name: lead.product });
+        const price = product?.price || lead.value || 0;
+
+        const itemizedProducts = [{
+            productId: product?._id,
+            quantity: 1,
+            price: price
+        }];
+
+        const orderNumber = `ORD-LEAD-${Date.now().toString().slice(-6)}`;
+        const isOwnStock = (orderSource || "Warehouse") === "Own Stock";
+
+        const newOrder = new Order({
+            orderNumber,
+            dealerId: lead.dealerId,
+            warehouseId: isOwnStock ? undefined : warehouseId,
+            orderSource: orderSource || "Warehouse",
+            assignedDistributorId: dealer.distributorId,
+            createdBy: req.user._id,
+            metadata: {
+                DealerName: dealer.companyName,
+                DistributorName: dealer.metadata?.DistributorName
+            },
+            products: itemizedProducts,
+            totalValue: price,
+            currentStage: "PO Upload",
+            stageProgress: 10,
+            activityLog: [{
+                action: "Order Created from Lead",
+                note: `Converted from Lead ID: ${leadId}`,
+                performedBy: req.user.name
+            }]
+        });
+
+        await newOrder.save();
+
+        // Update lead status
+        lead.status = "Won";
+        lead.activityLog.push({
+            action: "Converted to Order",
+            note: `Order ${orderNumber} created.`,
+            performedBy: req.user.name,
+            timestamp: new Date()
+        });
+        await lead.save();
+
+        res.status(201).json(newOrder);
+    } catch (error) {
+        console.error("Error converting lead to order:", error);
+        res.status(500).json({ message: "Conversion failed", error: error.message });
     }
 };

@@ -27,8 +27,16 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "../components/ui/dialog";
 import { Lead } from "./LeadManagement";
 import { formatCurrency } from "../utils/currency";
+import { useVisibleWarehouses } from "../hooks/useInventory";
 import {
   useLeadDetail,
   useUpdateLeadStatus,
@@ -41,6 +49,7 @@ import {
 } from "../hooks/useLeads";
 import { useDealers } from "../hooks/useDealers";
 import { useAuth } from "../context/AuthContext";
+import { OrderForm } from "../components/OrderForm";
 
 interface ActivityLog {
   _id?: string;
@@ -99,6 +108,7 @@ export function LeadDetail() {
   const [lossReason, setLossReason] = useState("");
   const [lossNotes, setLossNotes] = useState("");
   const [newRating, setNewRating] = useState("");
+  const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false);
   const [note, setNote] = useState("");
   const [isStatusSelectOpen, setIsStatusSelectOpen] = useState(false);
 
@@ -162,10 +172,6 @@ export function LeadDetail() {
     markFollowUpMutation.mutate({ id, followUpId });
   };
 
-  const handleCreateOrder = () => {
-    if (!id) return;
-    createOrderMutation.mutate(id);
-  };
 
 
 
@@ -558,7 +564,7 @@ export function LeadDetail() {
                   <Button
                     className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
                     disabled={actionLoading}
-                    onClick={handleCreateOrder}
+                    onClick={() => setIsConvertDialogOpen(true)}
                   >
                     {createOrderMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                     Create Order
@@ -784,6 +790,42 @@ export function LeadDetail() {
         </div>
       </div>
 
+      <Dialog open={isConvertDialogOpen} onOpenChange={setIsConvertDialogOpen}>
+        <DialogContent className="sm:max-w-[750px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Convert Lead to Order</DialogTitle>
+          </DialogHeader>
+          {lead && (
+            <OrderForm 
+              initialData={{
+                dealerId: lead.dealerId?._id || lead.dealerId,
+                orderSource: "Warehouse",
+                products: [{
+                  productId: "", // Manual selection for accuracy
+                  quantity: 1,
+                  price: lead.value || 0
+                }]
+              }}
+              onSubmit={async (data) => {
+                try {
+                  await createOrderMutation.mutateAsync({
+                    leadId: lead._id,
+                    warehouseId: data.warehouseId,
+                    orderSource: data.orderSource
+                  });
+                  toast.success("Lead converted to order successfully");
+                  setIsConvertDialogOpen(false);
+                  navigate("/orders");
+                } catch (error) {
+                  console.error("Conversion failed:", error);
+                  toast.error("Failed to convert lead to order");
+                }
+              }}
+              onCancel={() => setIsConvertDialogOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

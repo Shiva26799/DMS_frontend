@@ -155,8 +155,8 @@ export const useMarkFollowUpCompleted = () => {
 export const useCreateOrder = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (leadId: string) => {
-      const res = await apiClient.post("/orders/from-lead", { leadId });
+    mutationFn: async ({ leadId, warehouseId, orderSource }: { leadId: string, warehouseId?: string, orderSource?: string }) => {
+      const res = await apiClient.post("/orders/from-lead", { leadId, warehouseId, orderSource });
       return res.data;
     },
     onSuccess: () => {
