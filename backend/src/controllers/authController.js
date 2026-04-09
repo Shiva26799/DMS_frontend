@@ -44,8 +44,8 @@ export const login = async (req, res) => {
             { userId: user._id, role: user.role },
             privateKey,
             {
-                algorithm: process.env.JWT_ALGO,
-                expiresIn: process.env.JWT_EXPIRATION
+                algorithm: process.env.JWT_ALGO || 'RS256',
+                expiresIn: process.env.JWT_EXPIRATION || '1d'
             }
         );
 

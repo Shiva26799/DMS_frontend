@@ -24,7 +24,7 @@ export const checkJWTToken = async (req, res, next) => {
         // Read public key for RS256 verification
         const publicKey = fs.readFileSync(PUBLIC_KEY_PATH, "utf8");
         const decoded = jwt.verify(token, publicKey, {
-            algorithms: [process.env.JWT_ALGO]
+            algorithms: [process.env.JWT_ALGO || 'RS256']
         });
 
         // CRITICAL: Fetch the user from DB to ensure they still exist and have the correct role
