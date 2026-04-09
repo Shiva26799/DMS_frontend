@@ -2,5 +2,6 @@ node_modules
 .env
 .DS_Store
 *.log
-private_key.pem
-public_key.pem
+# Removed to allow Vercel deployment
+# private_key.pem
+# public_key.pem
