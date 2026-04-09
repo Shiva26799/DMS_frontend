@@ -9,7 +9,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Path to the private key (moved to root for security or as per project structure)
-const PRIVATE_KEY_PATH = path.join(__dirname, "../../private_key.pem");
+let PRIVATE_KEY_PATH = path.join(__dirname, "../../private_key.pem");
+if (!fs.existsSync(PRIVATE_KEY_PATH)) {
+    PRIVATE_KEY_PATH = path.join(process.cwd(), "backend/private_key.pem");
+}
 
 export const login = async (req, res) => {
     try {

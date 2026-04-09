@@ -8,7 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Path to the public key for RS256 verification
-const PUBLIC_KEY_PATH = path.join(__dirname, "../../public_key.pem");
+let PUBLIC_KEY_PATH = path.join(__dirname, "../../public_key.pem");
+if (!fs.existsSync(PUBLIC_KEY_PATH)) {
+    PUBLIC_KEY_PATH = path.join(process.cwd(), "backend/public_key.pem");
+}
 
 export const checkJWTToken = async (req, res, next) => {
     try {
