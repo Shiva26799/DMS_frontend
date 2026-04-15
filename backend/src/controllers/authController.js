@@ -41,7 +41,7 @@ export const login = async (req, res) => {
             process.env.JWT_SECRET,
             {
                 algorithm: "HS256",
-                expiresIn: process.env.JWT_EXPIRATION
+                expiresIn: process.env.JWT_EXPIRATION || "1d"
             }
         );
 
