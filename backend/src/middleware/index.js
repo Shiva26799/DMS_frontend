@@ -7,8 +7,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Path to the public key for RS256 verification
-const PUBLIC_KEY_PATH = path.join(__dirname, "../../public_key.pem");
+
 
 export const checkJWTToken = async (req, res, next) => {
     try {
@@ -18,10 +17,10 @@ export const checkJWTToken = async (req, res, next) => {
         }
 
         const token = authHeader.split(" ")[1];
-        // Read public key for RS256 verification
-        const publicKey = fs.readFileSync(PUBLIC_KEY_PATH, "utf8");
-        const decoded = jwt.verify(token, publicKey, {
-            algorithms: [process.env.JWT_ALGO]
+
+        // Use symmetric secret for HS256 verification
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+            algorithms: ["HS256"]
         });
 
         // CRITICAL: Fetch the user from DB to ensure they still exist and have the correct role
