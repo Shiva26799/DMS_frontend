@@ -34,12 +34,11 @@ export const login = async (req, res) => {
         user.lastLogin = new Date();
         await user.save();
 
-        // Read private key for RS256 signing
-        const privateKey = fs.readFileSync(PRIVATE_KEY_PATH, "utf8");
 
+        // Use symmetric secret for HS256 signing
         const token = jwt.sign(
             { userId: user._id, role: user.role },
-            privateKey,
+            process.env.JWT_SECRET,
             {
                 algorithm: process.env.JWT_ALGO,
                 expiresIn: process.env.JWT_EXPIRATION
