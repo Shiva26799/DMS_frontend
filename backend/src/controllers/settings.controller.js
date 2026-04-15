@@ -64,9 +64,13 @@ export const getUsers = async (req, res) => {
             };
         } else if (user.role === "Dealer") {
             query = { _id: user._id };
+        } else if (user.role === "Super Admin") {
+            query = { role: { $ne: "Warehouse Admin" } };
         }
 
-        const users = await User.find(query).select("-password");
+        const users = await User.find(query)
+            .select("-password")
+            .populate("dealerId");
         res.json(users);
     } catch (error) {
         console.error("Fetch users error:", error);
@@ -111,6 +115,19 @@ export const updateUser = async (req, res) => {
             updateData.password = await bcrypt.hash(updateData.password, 10);
         } else {
             delete updateData.password; // Don't overwrite if empty
+        }
+
+        // Sanitize warehouse IDs if provided
+        if (updateData.assignedWarehouses || updateData.dealerViewWarehouses) {
+            const allWarehouses = await Warehouse.find({}, '_id');
+            const validIds = allWarehouses.map(w => w._id.toString());
+            
+            if (updateData.assignedWarehouses) {
+                updateData.assignedWarehouses = updateData.assignedWarehouses.filter(id => validIds.includes(id.toString()));
+            }
+            if (updateData.dealerViewWarehouses) {
+                updateData.dealerViewWarehouses = updateData.dealerViewWarehouses.filter(id => validIds.includes(id.toString()));
+            }
         }
 
         const user = await User.findByIdAndUpdate(req.params.id, updateData, { returnDocument: 'after' }).select("-password");

@@ -3,9 +3,11 @@ import { checkJWTToken } from "../middleware/index.js";
 import { uploadLogo } from "../middleware/s3-upload.middleware.js";
 import {
     getCompanyInfo, updateCompanyInfo, uploadCompanyLogo,
-    getUsers, createUser, updateUser, deleteUser,
-    getWarehouses, createWarehouse, updateWarehouse, deleteWarehouse
+    getUsers, createUser, updateUser, deleteUser
 } from "../controllers/settings.controller.js";
+import {
+    getWarehouses, createWarehouse, updateWarehouse, deleteWarehouse
+} from "../controllers/warehouse.controller.js";
 import { authorize } from "../middleware/authorize.js";
 
 const router = express.Router();

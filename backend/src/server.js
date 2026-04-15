@@ -14,6 +14,9 @@ import orderRoutes from "./routes/order.routes.js";
 import warrantyRoutes from "./routes/warranty.routes.js";
 import inventoryRoutes from "./routes/inventory.routes.js";
 import rolePermissionRoutes from "./routes/permission.routes.js";
+import customerRoutes from "./routes/customer.routes.js";
+import maintenanceRoutes from "./routes/maintenance.routes.js";
+import analyticsRoutes from "./routes/analytics.routes.js";
 
 import path from "path";
 import { fileURLToPath } from "url";
@@ -43,6 +46,9 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/warranty", warrantyRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/permissions", rolePermissionRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/maintenance", maintenanceRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 // Database connection
 const PORT = process.env.PORT;
@@ -59,5 +65,3 @@ mongoose
     .catch((err) => {
         console.error("MongoDB connection error:", err);
     });
-
-export default app;

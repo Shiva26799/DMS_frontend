@@ -13,6 +13,8 @@ const productSchema = new mongoose.Schema(
         reorderLevel: { type: Number, default: 5 },
         warehouseId: { type: mongoose.Schema.Types.ObjectId, ref: "Warehouse" },
         imageUrl: { type: String },
+        maintenanceRequired: { type: Boolean, default: false },
+        maintenanceIntervalMonths: { type: Number, default: 3 },
         specifications: { type: Map, of: String, default: {} },
     },
     { timestamps: true }

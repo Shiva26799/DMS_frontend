@@ -17,6 +17,7 @@ const activitySchema = new mongoose.Schema({
 const leadSchema = new mongoose.Schema(
     {   customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
         dealerId: { type: mongoose.Schema.Types.ObjectId, ref: "Dealer" },
+        distributorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
         metadata: {
             DistributorName: { type: String },
             DealerName: { type: String }
@@ -38,6 +39,7 @@ const leadSchema = new mongoose.Schema(
         notes: { type: String },
         assignedDate: { type: Date },
         followUps: [followUpSchema],
+        stage: { type: String, enum: ["Lead", "Customer"], default: "Lead" },
         activityLog: [activitySchema],
     },
     { timestamps: true }

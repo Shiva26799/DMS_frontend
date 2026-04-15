@@ -1,17 +1,34 @@
+import mongoose from "mongoose";
 import { Order } from "../models/order.model.js";
 import { Dealer } from "../models/dealer.model.js";
+import { User } from "../models/user.model.js";
 import { Product } from "../models/product.model.js";
 import { Lead } from "../models/lead.model.js";
-import { deductStockFromOrder } from "../services/inventory.service.js";
+import { Inventory } from "../models/inventory.model.js";
+import { Maintenance } from "../models/maintenance.model.js";
+import { deductStockFromOrder, restoreStockForOrder } from "../services/inventory.service.js";
 
 // Create a new order
 export const createOrder = async (req, res) => {
+    const session = await mongoose.startSession();
     try {
-        const { dealerId, warehouseId, orderSource, products } = req.body; // products: [{ productId, quantity, price }]
+        const { dealerId, warehouseId, orderSource, products, buyerType = "Dealer", leadId, customerName } = req.body;
 
-        const dealer = await Dealer.findById(dealerId);
+        let dealer;
+        if (buyerType === "User") {
+            dealer = await User.findById(dealerId);
+        } else {
+            dealer = await Dealer.findById(dealerId);
+        }
+        
         if (!dealer) {
-            return res.status(404).json({ message: "Dealer not found" });
+            return res.status(404).json({ message: "Dealer or Distributor not found" });
+        }
+
+        if (buyerType === "Dealer" && dealer.status !== "Approved") {
+            return res.status(400).json({ 
+                message: `Order cannot be created. Dealer status is "${dealer.status}". Dealer must be "Approved" first.` 
+            });
         }
 
         let totalValue = 0;
@@ -22,56 +39,105 @@ export const createOrder = async (req, res) => {
             if (!product) {
                 return res.status(404).json({ message: `Product ${item.productId} not found` });
             }
-            const price = Number(item.price) || product.price;
+            if (!item.price || isNaN(Number(item.price)) || Number(item.price) <= 0) {
+                return res.status(400).json({ message: `Price is mandatory and must be valid for product ${product.name}` });
+            }
+            const price = Number(item.price);
             const quantity = Number(item.quantity) || 1;
-            totalValue += price * quantity;
+            
+            if (warehouseId || orderSource === "Own Stock") {
+                const stockQuery = {
+                    productId: item.productId,
+                    ownerType: orderSource === "Own Stock" ? (buyerType === "User" ? dealer.role : "Dealer") : "Warehouse",
+                    ownerId: orderSource === "Own Stock" ? dealerId : warehouseId
+                };
+                const inventory = await Inventory.findOne(stockQuery);
+                if (!inventory || inventory.quantity < quantity) {
+                    return res.status(400).json({ 
+                        message: `Insufficient stock for product ${product.name}. Available: ${inventory?.quantity || 0}` 
+                    });
+                }
+            }
 
-            itemizedProducts.push({
-                productId: item.productId,
-                quantity,
-                price
-            });
+            totalValue += price * quantity;
+            itemizedProducts.push({ productId: item.productId, quantity, price });
         }
 
         const orderNumber = `ORD-2026-${Date.now().toString().slice(-6)}`;
-
         const isOwnStock = orderSource === "Own Stock";
-        const initialStage = "PO Upload";
-        const initialProgress = 10;
 
-        // For Own Stock, we might eventually skip some middle stages or allow faster approval
+        // --- BEGIN TRANSACTION ---
+        session.startTransaction();
 
         const newOrder = new Order({
             orderNumber,
+            buyerType,
             dealerId,
             warehouseId: isOwnStock ? undefined : warehouseId,
             orderSource: orderSource || "Warehouse",
-            assignedDistributorId: dealer.distributorId,
+            assignedDistributorId: buyerType === "User" ? undefined : dealer.distributorId,
+            leadId: leadId || undefined,
+            customerName: customerName || undefined,
             createdBy: req.user._id,
             metadata: {
-                DealerName: dealer.companyName,
-                DistributorName: dealer.metadata?.DistributorName
+                DealerName: buyerType === "User" ? dealer.name : dealer.companyName,
+                DistributorName: buyerType === "User" ? undefined : dealer.metadata?.DistributorName
             },
             products: itemizedProducts,
             totalValue,
-            currentStage: initialStage,
-            stageProgress: initialProgress,
+            currentStage: "PO Upload",
+            stageProgress: 10,
             activityLog: [{
                 action: "Order Created",
-                note: `Order created (${orderSource || "Warehouse"}). Total Value: ₹${totalValue}`,
+                note: `Order created (${orderSource || "Warehouse"})${customerName ? ` for customer: ${customerName}` : ""}. Total Value: ₹${totalValue}`,
                 performedBy: req.user?.name || "System"
             }]
         });
 
-        await newOrder.save();
+        await newOrder.save({ session });
+
+        // Atomic Stock Deduction within the same transaction
+        if (orderSource === "Warehouse" || orderSource === "Own Stock") {
+            await deductStockFromOrder(newOrder._id, session);
+            newOrder.activityLog.push({
+                action: "Stock Deducted",
+                note: `Inventory automatically adjusted for ${orderSource || "Warehouse"} fulfillment.`,
+                performedBy: "System"
+            });
+            await newOrder.save({ session });
+        }
+
+        // --- UPDATE LEAD STATUS IF APPLICABLE ---
+        if (leadId) {
+            await Lead.findByIdAndUpdate(leadId, {
+                status: "Won",
+                stage: "Customer",
+                $push: {
+                    activityLog: {
+                        action: "Converted to Order",
+                        note: `Order ${orderNumber} created.`,
+                        performedBy: req.user.name || "System",
+                        timestamp: new Date()
+                    }
+                }
+            }, { session });
+        }
+
+        await session.commitTransaction();
+        // --- END TRANSACTION ---
+
         const populatedOrder = await Order.findById(newOrder._id)
-            .populate("dealerId", "companyName ownerName code")
-            .populate("products.productId", "name price sku");
+            .populate("dealerId", "companyName ownerName code name phone contact email")
+            .populate("products.productId", "name price sku")
+            .populate("leadId", "customerName phone stage");
 
         res.status(201).json(populatedOrder);
     } catch (error) {
-        console.error("Error creating order:", error);
+        await session.abortTransaction();
+        console.error("Error creating order (transaction rolled back):", error);
         res.status(500).json({ message: "Error creating order", error: error.message });
+    } finally {
+        session.endSession();
     }
 };
 
@@ -79,6 +145,10 @@ export const createOrder = async (req, res) => {
 export const getOrders = async (req, res) => {
     try {
         const user = req.user;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
         let query = {};
 
         if (user.role === "Dealer") {
@@ -86,14 +156,44 @@ export const getOrders = async (req, res) => {
         } else if (user.role === "Distributor") {
             const dealers = await Dealer.find({ distributorId: user._id });
             const dealerIds = dealers.map(d => d._id);
-            query = { dealerId: { $in: dealerIds } };
+            query = {
+                $or: [
+                    { dealerId: { $in: dealerIds } },
+                    { dealerId: user._id },
+                    { assignedDistributorId: user._id },
+                    { createdBy: user._id }
+                ]
+            };
         }
 
+        const totalOrders = await Order.countDocuments(query);
+        const stats = await Order.aggregate([
+            { $match: query },
+            { $group: { _id: null, totalValue: { $sum: "$totalValue" } } }
+        ]);
+        const totalValue = stats.length > 0 ? stats[0].totalValue : 0;
+
         const orders = await Order.find(query)
-            .populate("dealerId", "companyName ownerName code")
+            .populate("dealerId", "companyName ownerName code name phone contact email")
             .populate("products.productId", "name price sku")
-            .sort({ createdAt: -1 });
-        res.json(orders);
+            .populate("leadId", "customerName phone stage")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.json({
+            orders,
+            stats: {
+                totalOrders,
+                totalValue
+            },
+            pagination: {
+                total: totalOrders,
+                page,
+                limit,
+                pages: Math.ceil(totalOrders / limit)
+            }
+        });
     } catch (error) {
         console.error("Fetch orders error:", error);
         res.status(500).json({ message: "Error fetching orders", error: error.message });
@@ -105,8 +205,9 @@ export const getOrderById = async (req, res) => {
     try {
         const user = req.user;
         const order = await Order.findById(req.params.id)
-            .populate("dealerId", "companyName ownerName code contact email address region")
-            .populate("products.productId", "name price sku category description");
+            .populate("dealerId", "companyName ownerName code contact email address region name phone")
+            .populate("products.productId", "name price sku category description")
+            .populate("leadId", "customerName phone email stage region");
 
         if (!order) {
             return res.status(404).json({ message: "Order not found" });
@@ -120,12 +221,19 @@ export const getOrderById = async (req, res) => {
         let readOnly = false;
 
         if (user.role === "Distributor") {
-            const dealer = await Dealer.findOne({ _id: order.dealerId, distributorId: user._id });
-            if (!dealer) {
-                return res.status(403).json({ message: "Unauthorized access to this order (not your dealer)." });
+            // Check if they are the buyer or the assigned distributor
+            if (String(order.dealerId?._id || order.dealerId) !== String(user._id)) {
+                const dealer = await Dealer.findOne({ _id: order.dealerId?._id || order.dealerId, distributorId: user._id });
+                if (!dealer) {
+                    return res.status(403).json({ message: "Unauthorized access to this order (not your dealer)." });
+                }
             }
-            // Distributors get read-only unless they are the creator
-            if (!order.createdBy || String(order.createdBy) !== String(user._id)) {
+            
+            // Distributors get read-only unless they are the creator or they are the buyer
+            if (
+                (!order.createdBy || String(order.createdBy) !== String(user._id)) && 
+                String(order.dealerId?._id || order.dealerId) !== String(user._id)
+            ) {
                 readOnly = true;
             }
         }
@@ -219,15 +327,31 @@ export const approveOrder = async (req, res) => {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
-        // Permission check: Super Admin or the concerned Dealer
+        // Permission check: Super Admin, the concerned Dealer, or the assigned Distributor
         const isDealer = req.user.role === "Dealer";
+        const isDistributor = req.user.role === "Distributor";
+        const isSuperAdmin = req.user.role === "Super Admin";
+
         if (isDealer && String(order.dealerId) !== String(req.user.dealerId)) {
             return res.status(403).json({ message: "Unauthorized: You can only approve payments for your own orders." });
         }
 
+        if (isDistributor && String(order.assignedDistributorId) !== String(req.user._id)) {
+            return res.status(403).json({ message: "Unauthorized: You can only approve payments for your assigned dealers." });
+        }
+
+        if (!isSuperAdmin && !isDealer && !isDistributor) {
+            return res.status(403).json({ message: "Unauthorized: You do not have permission to approve payments." });
+        }
+
         order.paymentStatus = "Paid";
-        order.currentStage = "Order Approval";
-        order.stageProgress = 40; // End of Circle 3
+        if (order.orderSource === "Own Stock") {
+            order.currentStage = "Installation";
+            order.stageProgress = 90;
+        } else {
+            order.currentStage = "Order Approval";
+            order.stageProgress = 40; // End of Circle 3
+        }
 
         order.activityLog.push({
             action: "Payment Verified",
@@ -248,10 +372,16 @@ export const finalizeOrderApproval = async (req, res) => {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
-        // Permission check: Super Admin or the concerned Dealer (if Own Stock)
-        const isDealer = req.user.role === "Dealer";
-        if (isDealer && String(order.dealerId) !== String(req.user.dealerId)) {
-            return res.status(403).json({ message: "Unauthorized." });
+        // Permission check: Super Admin or assigned Distributor
+        const isSuperAdmin = req.user.role === "Super Admin";
+        const isDistributor = req.user.role === "Distributor";
+
+        if (isDistributor && String(order.assignedDistributorId) !== String(req.user._id)) {
+            return res.status(403).json({ message: "Unauthorized: You can only approve orders for your assigned dealers." });
+        }
+
+        if (!isSuperAdmin && !isDistributor) {
+            return res.status(403).json({ message: "Only Super Admin or the assigned Distributor can approve orders." });
         }
 
         const isOwnStock = order.orderSource === "Own Stock";
@@ -292,9 +422,11 @@ export const uploadLovolInvoice = async (req, res) => {
             uploadedAt: new Date()
         };
 
-        // Advancing to the next circle: Delivery
-        order.currentStage = "Delivery";
-        order.stageProgress = 75;
+        // Advancing to the next circle: Delivery (Only if both invoices are present)
+        if (order.documents?.lovolInvoice?.url && order.documents?.dealerInvoice?.url) {
+            order.currentStage = "Delivery";
+            order.stageProgress = 75;
+        }
 
         order.activityLog.push({
             action: "Lovol Invoice Uploaded",
@@ -329,6 +461,12 @@ export const uploadDealerInvoice = async (req, res) => {
             performedBy: req.user.name
         });
 
+        // Advancing to the next circle: Delivery (Only if both invoices are present)
+        if (order.documents?.lovolInvoice?.url && order.documents?.dealerInvoice?.url) {
+            order.currentStage = "Delivery";
+            order.stageProgress = 75;
+        }
+
         await order.save();
         res.json(order);
     } catch (error) {
@@ -352,19 +490,6 @@ export const updateDeliveryStatus = async (req, res) => {
 
         order.deliveryStatus = "Dispatched";
         order.stageProgress = 80;
-
-        try {
-            // Trigger Stock Deduction
-            await deductStockFromOrder(order._id);
-            order.activityLog.push({
-                action: "Stock Deducted",
-                note: `Inventory successfully updated for ${order.orderSource} sources.`,
-                performedBy: "System"
-            });
-        } catch (stockError) {
-            console.error("Stock deduction failed during dispatch:", stockError);
-            return res.status(400).json({ message: `Dispatch failed: ${stockError.message}` });
-        }
 
         order.activityLog.push({
             action: "Order Dispatched",
@@ -433,13 +558,15 @@ export const registerWarranty = async (req, res) => {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
-        const { machineSerialNumber, engineNumber, warrantyStartDate, warrantyEndDate } = req.body;
-
+        const { machineSerialNumber, engineNumber, warrantyStartDate, warrantyEndDate, warrantyMonths, maintenanceService } = req.body;
+ 
         order.warrantyDetails = {
             machineSerialNumber,
             engineNumber,
             warrantyStartDate: warrantyStartDate ? new Date(warrantyStartDate) : new Date(),
-            warrantyEndDate: warrantyEndDate ? new Date(warrantyEndDate) : null
+            warrantyEndDate: warrantyEndDate ? new Date(warrantyEndDate) : null,
+            warrantyMonths: Number(warrantyMonths) || 0,
+            maintenanceService: maintenanceService || "None"
         };
 
         if (req.file) {
@@ -460,6 +587,41 @@ export const registerWarranty = async (req, res) => {
         });
 
         await order.save();
+
+        // Auto-create maintenance record if a maintenance tier is selected
+        if (maintenanceService && maintenanceService !== "None") {
+            try {
+                for (const item of order.products) {
+                    const product = await Product.findById(item.productId);
+                    if (product) {
+                        const intervalMonths = 3; // Default interval
+                        // Or if the product happens to have an interval set, use it:
+                        // const intervalMonths = product.maintenanceIntervalMonths || 3;
+                        const startDate = warrantyStartDate ? new Date(warrantyStartDate) : new Date();
+                        const dueDate = new Date(startDate);
+                        dueDate.setMonth(dueDate.getMonth() + intervalMonths);
+
+                        // Resolve dealer name
+                        let dealerName = order.metadata?.DealerName || "";
+
+                        await Maintenance.create({
+                            orderId: order._id,
+                            productId: item.productId,
+                            dealerId: order.dealerId,
+                            dealerName,
+                            productSerial: machineSerialNumber || "",
+                            productName: product.name,
+                            serviceType: maintenanceService,
+                            dueDate,
+                            status: "Upcoming"
+                        });
+                    }
+                }
+            } catch (maintErr) {
+                console.error("Auto-maintenance scheduling warning:", maintErr.message);
+            }
+        }
+
         res.json(order);
     } catch (error) {
         res.status(500).json({ message: "Error registering warranty", error: error.message });
@@ -468,15 +630,17 @@ export const registerWarranty = async (req, res) => {
 
 // Cancel Order
 export const cancelOrder = async (req, res) => {
+    const session = await mongoose.startSession();
     try {
-        const order = await Order.findById(req.params.id);
+        const order = await Order.findById(req.params.id).session(session);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
-        // Only allow cancellation if not already closed/delivered/cancelled?
-        // For now, let's allow it if it's not "Closure"
         if (order.currentStage === "Closure") {
             return res.status(400).json({ message: "Cannot cancel a closed order" });
         }
+
+        // --- BEGIN TRANSACTION ---
+        session.startTransaction();
 
         order.currentStage = "Cancelled";
         order.paymentStatus = "Cancelled";
@@ -489,10 +653,28 @@ export const cancelOrder = async (req, res) => {
             performedBy: req.user?.name || "User"
         });
 
-        await order.save();
+        // Restore Stock atomically if it was deducted
+        const hasStockDeducted = order.activityLog.some(log => log.action === "Stock Deducted");
+        if (hasStockDeducted) {
+            await restoreStockForOrder(order._id, session);
+            order.activityLog.push({
+                action: "Stock Restored",
+                note: "Inventory levels restored following cancellation.",
+                performedBy: "System"
+            });
+        }
+
+        await order.save({ session });
+        await session.commitTransaction();
+        // --- END TRANSACTION ---
+
         res.json(order);
     } catch (error) {
+        await session.abortTransaction();
+        console.error("Error cancelling order (transaction rolled back):", error);
         res.status(500).json({ message: "Error cancelling order", error: error.message });
+    } finally {
+        session.endSession();
     }
 };
 // Admin overriding the order status (Stage Jumping)
@@ -667,68 +849,5 @@ export const requestDocument = async (req, res) => {
     } catch (error) {
         console.error("Request document error:", error);
         res.status(500).json({ message: "Error requesting document", error: error.message });
-    }
-};
-// Create order from a lead (Conversion)
-export const createOrderFromLead = async (req, res) => {
-    try {
-        const { leadId, warehouseId, orderSource } = req.body;
-        const lead = await Lead.findById(leadId);
-        if (!lead) return res.status(404).json({ message: "Lead not found" });
-
-        const dealer = await Dealer.findById(lead.dealerId);
-        if (!dealer) return res.status(404).json({ message: "Dealer not found for this lead" });
-
-        // Find product price if possible, or use a default
-        const product = await Product.findOne({ name: lead.product });
-        const price = product?.price || lead.value || 0;
-
-        const itemizedProducts = [{
-            productId: product?._id,
-            quantity: 1,
-            price: price
-        }];
-
-        const orderNumber = `ORD-LEAD-${Date.now().toString().slice(-6)}`;
-        const isOwnStock = (orderSource || "Warehouse") === "Own Stock";
-
-        const newOrder = new Order({
-            orderNumber,
-            dealerId: lead.dealerId,
-            warehouseId: isOwnStock ? undefined : warehouseId,
-            orderSource: orderSource || "Warehouse",
-            assignedDistributorId: dealer.distributorId,
-            createdBy: req.user._id,
-            metadata: {
-                DealerName: dealer.companyName,
-                DistributorName: dealer.metadata?.DistributorName
-            },
-            products: itemizedProducts,
-            totalValue: price,
-            currentStage: "PO Upload",
-            stageProgress: 10,
-            activityLog: [{
-                action: "Order Created from Lead",
-                note: `Converted from Lead ID: ${leadId}`,
-                performedBy: req.user.name
-            }]
-        });
-
-        await newOrder.save();
-
-        // Update lead status
-        lead.status = "Won";
-        lead.activityLog.push({
-            action: "Converted to Order",
-            note: `Order ${orderNumber} created.`,
-            performedBy: req.user.name,
-            timestamp: new Date()
-        });
-        await lead.save();
-
-        res.status(201).json(newOrder);
-    } catch (error) {
-        console.error("Error converting lead to order:", error);
-        res.status(500).json({ message: "Conversion failed", error: error.message });
     }
 };

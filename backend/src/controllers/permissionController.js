@@ -10,6 +10,23 @@ export const getPermissions = async (req, res) => {
     // If no permissions exist, seed them
     if (permissions.length === 0) {
       permissions = await seedInitialPermissions();
+    } else {
+      // Check if Warehouse Admin is missing specifically
+      const hasWHAdmin = permissions.some(p => p.role === "Warehouse Admin");
+      if (!hasWHAdmin) {
+        const whAdminPerms = {
+          role: "Warehouse Admin",
+          permissions: {
+            leads: { view: false, create: false, edit: false, delete: false, assignToDealers: false, updateStatus: false, addActivities: false, convertToOrder: false },
+            dealers: { view: false, onboard: false, approveKYC: false, editProfiles: false, deactivate: false },
+            orders: { view: "Own only", create: false, uploadDocs: false, updateDelivery: true, cancel: false, approvePayment: false, uploadLovolInvoice: false, requestDocs: false, statusOverride: false },
+            inventory: { viewOwn: true, viewWarehouses: false, viewSubordinates: false, manage: true },
+            products: { view: true }
+          }
+        };
+        await RolePermission.create(whAdminPerms);
+        permissions = await RolePermission.find();
+      }
     }
     
     res.status(200).json(permissions);
@@ -67,6 +84,16 @@ const seedInitialPermissions = async () => {
         leads: { view: "Own only", create: true, edit: "Own only", delete: false, assignToDealers: false, updateStatus: "Own only", addActivities: true, convertToOrder: "Own only" },
         dealers: { view: "Self", onboard: false, approveKYC: false, editProfiles: false, deactivate: false },
         orders: { view: "Own only", create: true, uploadDocs: "Creator only", updateDelivery: "Creator only", cancel: "Creator only", approvePayment: false, uploadLovolInvoice: false, requestDocs: false, statusOverride: false }
+      }
+    },
+    {
+      role: "Warehouse Admin",
+      permissions: {
+        leads: { view: false, create: false, edit: false, delete: false, assignToDealers: false, updateStatus: false, addActivities: false, convertToOrder: false },
+        dealers: { view: false, onboard: false, approveKYC: false, editProfiles: false, deactivate: false },
+        orders: { view: "Own only", create: false, uploadDocs: false, updateDelivery: true, cancel: false, approvePayment: false, uploadLovolInvoice: false, requestDocs: false, statusOverride: false },
+        inventory: { viewOwn: true, viewWarehouses: false, viewSubordinates: false, manage: true },
+        products: { view: true }
       }
     }
   ];

@@ -9,7 +9,7 @@ const inventorySchema = new mongoose.Schema(
         },
         ownerType: { 
             type: String, 
-            enum: ["Warehouse", "Distributor", "Dealer"], 
+            enum: ["Warehouse", "Distributor", "Dealer", "Warehouse Admin", "Super Admin"], 
             required: true 
         },
         ownerId: { 
@@ -25,6 +25,10 @@ const inventorySchema = new mongoose.Schema(
         minStockLevel: { 
             type: Number, 
             default: 0 
+        },
+        binLocation: {
+            type: String,
+            default: ""
         },
     },
     { timestamps: true }

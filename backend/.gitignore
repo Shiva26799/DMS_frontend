@@ -2,6 +2,14 @@ node_modules
 .env
 .DS_Store
 *.log
-# Removed to allow Vercel deployment
-# private_key.pem
-# public_key.pem
+private_key.pem
+public_key.pem
+.env.example
+scripts
+test_stock_logic.js
+ backfill_log.txt
+        backfill_maint.js
+        backfill_maint_v2.js
+        debug_backfill.js
+        debug_maint.js
+        mini_debug.js

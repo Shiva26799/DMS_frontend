@@ -1,0 +1,44 @@
+name: Build and Deploy Frontend to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY_LOGIN_SERVER }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+          tags: |
+            ${{ secrets.REGISTRY_LOGIN_SERVER }}/dms-frontend:latest
+            ${{ secrets.REGISTRY_LOGIN_SERVER }}/dms-frontend:${{ github.sha }}
+
+      - name: Deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          registryUrl: ${{ secrets.REGISTRY_LOGIN_SERVER }}
+          registryUsername: ${{ secrets.REGISTRY_USERNAME }}
+          registryPassword: ${{ secrets.REGISTRY_PASSWORD }}
+          containerAppName: dms-frontend-container
+          resourceGroup: DMS-RG
+          imageToDeploy: ${{ secrets.REGISTRY_LOGIN_SERVER }}/dms-frontend:${{ github.sha }}
+          environmentVariables: >
+            VITE_API_URL=${{ secrets.VITE_API_URL }}

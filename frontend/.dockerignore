@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.git
+.gitignore
+*.md
+tsc_output.txt
+diff.txt
+SETUP.bat
+SETUP.sh

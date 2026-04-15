@@ -10,13 +10,15 @@ import {
     addLeadFollowUp,
     markFollowUpCompleted,
     convertLeadToCustomer,
-    deleteLead
+    deleteLead,
+    searchLeads
 } from "../controllers/lead.controller.js";
 import { authorize } from "../middleware/authorize.js";
 
 const router = express.Router();
 
 router.get("/", checkJWTToken, checkPermission("leads", "view"), getLeads);
+router.get("/search", checkJWTToken, searchLeads);
 router.post("/", checkJWTToken, checkPermission("leads", "create"), createLead);
 router.get("/:id", checkJWTToken, checkPermission("leads", "view"), getLeadById);
 router.put("/:id", checkJWTToken, checkPermission("leads", "edit"), updateLead);

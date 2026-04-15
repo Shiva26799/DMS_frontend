@@ -43,9 +43,12 @@ export const getProducts = async (req, res) => {
 
         res.json({
             products,
-            totalPages: Math.ceil(total / limit),
-            currentPage: parseInt(page),
-            totalProducts: total,
+            pagination: {
+                total,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                pages: Math.ceil(total / limit)
+            },
             counts: {
                 total,
                 Harvester: harvesterCount,

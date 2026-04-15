@@ -5,9 +5,11 @@ import {
     getClaims, 
     getClaimById, 
     updateClaimStatus, 
-    addMedia 
+    addMedia,
+    getCustomerProducts
 } from "../controllers/warranty.controller.js";
 import { uploadWarrantyMedia } from "../middleware/s3-upload.middleware.js";
+import { canManageClaim, isHOApprover } from "../middleware/warrantyRBAC.middleware.js";
 
 const router = express.Router();
 
@@ -16,8 +18,9 @@ router.use(checkJWTToken);
 
 router.post("/", createClaim);
 router.get("/", getClaims);
-router.get("/:id", getClaimById);
-router.patch("/:id/status", updateClaimStatus);
-router.post("/:id/media", uploadWarrantyMedia.single("media"), addMedia);
+router.get("/customer-products", getCustomerProducts);
+router.get("/:id", canManageClaim, getClaimById);
+router.patch("/:id/status", canManageClaim, isHOApprover, updateClaimStatus);
+router.post("/:id/media", canManageClaim, uploadWarrantyMedia.single("media"), addMedia);
 
 export default router;

@@ -4,7 +4,11 @@ const warrantyClaimSchema = new mongoose.Schema(
     {
         claimNumber: { type: String, required: true, unique: true },
         orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" }, // Optional link to original order
-        dealerId: { type: mongoose.Schema.Types.ObjectId, ref: "Dealer", required: true },
+        buyerType: { type: String, enum: ["Dealer", "User"], default: "Dealer" },
+        dealerId: { type: mongoose.Schema.Types.ObjectId, required: true, refPath: "buyerType" },
+        distributorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        customerName: { type: String },
         metadata: {
             DistributorName: { type: String },
             DealerName: { type: String }
@@ -21,6 +25,8 @@ const warrantyClaimSchema = new mongoose.Schema(
             {
                 url: { type: String },
                 type: { type: String, enum: ["image", "video"] },
+                stage: { type: String },
+                notes: { type: String },
                 uploadedAt: { type: Date, default: Date.now }
             }
         ],
@@ -62,6 +68,7 @@ const warrantyClaimSchema = new mongoose.Schema(
                 "Claim Approved",
                 "Parts Processing",
                 "Parts Dispatched",
+                "Parts Received",
                 "Repair & Collection",
                 "Closed",
                 "Rejected"

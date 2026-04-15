@@ -6,7 +6,7 @@ const rolePermissionSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      enum: ["Super Admin", "Distributor", "Dealer"],
+      enum: ["Super Admin", "Distributor", "Dealer", "Warehouse Admin"],
     },
     permissions: {
       leads: {
@@ -42,6 +42,17 @@ const rolePermissionSchema = new mongoose.Schema(
         viewWarehouses: { type: Boolean, default: true },
         viewSubordinates: { type: Boolean, default: false }, // For Distributors
         manage: { type: Boolean, default: false },
+      },
+      customers: {
+        view: { type: mongoose.Schema.Types.Mixed, default: true },
+        edit: { type: mongoose.Schema.Types.Mixed, default: true },
+        delete: { type: Boolean, default: false },
+      },
+      products: {
+        view: { type: Boolean, default: false },
+        create: { type: Boolean, default: false },
+        edit: { type: Boolean, default: false },
+        delete: { type: Boolean, default: false },
       },
     },
   },

@@ -3,7 +3,8 @@ import mongoose from "mongoose";
 const orderSchema = new mongoose.Schema(
     {
         orderNumber: { type: String, required: true, unique: true },
-        dealerId: { type: mongoose.Schema.Types.ObjectId, ref: "Dealer", required: true },
+        buyerType: { type: String, enum: ["Dealer", "User"], default: "Dealer" },
+        dealerId: { type: mongoose.Schema.Types.ObjectId, required: true, refPath: "buyerType" },
         warehouseId: { type: mongoose.Schema.Types.ObjectId, ref: "Warehouse" },
         orderSource: { 
             type: String, 
@@ -11,6 +12,8 @@ const orderSchema = new mongoose.Schema(
             default: "Warehouse" 
         },
         assignedDistributorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        leadId: { type: mongoose.Schema.Types.ObjectId, ref: "Lead" },
+        customerName: { type: String },
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
         metadata: {
             DistributorName: { type: String },
@@ -56,7 +59,7 @@ const orderSchema = new mongoose.Schema(
             warrantyStartDate: { type: Date },
             warrantyEndDate: { type: Date },
             warrantyMonths: { type: Number },
-            maintenanceMonths: { type: Number }
+            maintenanceService: { type: String, enum: ["500h", "1000h", "None"], default: "None" }
         },
 
         activityLog: [

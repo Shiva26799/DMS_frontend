@@ -10,6 +10,7 @@ const warehouseSchema = new mongoose.Schema(
         adminName: { type: String, required: true },
         adminContact: { type: String, required: true },
         adminEmail: { type: String, required: true },
+        adminUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     },
     { timestamps: true }
 );

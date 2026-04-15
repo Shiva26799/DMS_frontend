@@ -5,7 +5,6 @@ import { isOrderOwnerOrAdmin } from "../middleware/orderRBAC.middleware.js";
 import { uploadOrderDocument } from "../middleware/s3-upload.middleware.js";
 import {
     createOrder,
-    createOrderFromLead,
     getOrders,
     getOrderById,
     uploadPODocument,
@@ -33,7 +32,6 @@ router.use(checkJWTToken);
 
 // --- CRUD (All authenticated roles can create & view) ---
 router.post("/", checkPermission("orders", "create"), createOrder);
-router.post("/from-lead", checkPermission("orders", "create"), createOrderFromLead);
 router.get("/", checkPermission("orders", "view"), getOrders);
 router.get("/:id", checkPermission("orders", "view"), getOrderById);
 

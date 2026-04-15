@@ -9,10 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Path to the private key (moved to root for security or as per project structure)
-let PRIVATE_KEY_PATH = path.join(__dirname, "../../private_key.pem");
-if (!fs.existsSync(PRIVATE_KEY_PATH)) {
-    PRIVATE_KEY_PATH = path.join(process.cwd(), "backend/private_key.pem");
-}
+const PRIVATE_KEY_PATH = path.join(__dirname, "../../private_key.pem");
 
 export const login = async (req, res) => {
     try {
@@ -44,8 +41,8 @@ export const login = async (req, res) => {
             { userId: user._id, role: user.role },
             privateKey,
             {
-                algorithm: process.env.JWT_ALGO || 'RS256',
-                expiresIn: process.env.JWT_EXPIRATION || '1d'
+                algorithm: process.env.JWT_ALGO,
+                expiresIn: process.env.JWT_EXPIRATION
             }
         );
 
@@ -55,7 +52,9 @@ export const login = async (req, res) => {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                managedWarehouseId: user.managedWarehouseId,
+                dealerId: user.dealerId
             }
         });
     } catch (error) {

@@ -5,6 +5,10 @@ import bcrypt from "bcryptjs";
 export const getDealers = async (req, res) => {
     try {
         const user = req.user;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
         let query = {};
 
         if (user.role === "Distributor") {
@@ -16,6 +20,7 @@ export const getDealers = async (req, res) => {
         const dealers = await Dealer.find(query)
             .populate("distributorId", "name")
             .sort({ companyName: 1 });
+
         res.json(dealers);
     } catch (error) {
         console.error("Fetch dealers error:", error);
@@ -139,5 +144,37 @@ export const updateDealer = async (req, res) => {
     } catch (error) {
         console.error("Update dealer error:", error);
         res.status(500).json({ message: "Failed to update dealer" });
+    }
+};
+
+export const getAssignees = async (req, res) => {
+    try {
+        const user = req.user;
+        let assignees = [];
+
+        if (user.role === "Super Admin") {
+            // Fetch all approved dealers
+            const dealers = await Dealer.find({ status: "Approved" }).select("_id companyName").sort({ companyName: 1 });
+            // Fetch all distributors
+            const distributors = await User.find({ role: "Distributor" }).select("_id name").sort({ name: 1 });
+
+            assignees = [
+                ...distributors.map(d => ({ _id: d._id, name: d.name, type: "Distributor" })),
+                ...dealers.map(d => ({ _id: d._id, name: d.companyName, type: "Dealer" }))
+            ];
+        } else if (user.role === "Distributor") {
+            // Fetch dealers under this distributor
+            const dealers = await Dealer.find({ distributorId: user._id, status: "Approved" }).select("_id companyName").sort({ companyName: 1 });
+            
+            assignees = [
+                { _id: user._id, name: `${user.name} (Myself)`, type: "Distributor" },
+                ...dealers.map(d => ({ _id: d._id, name: d.companyName, type: "Dealer" }))
+            ];
+        }
+
+        res.json(assignees);
+    } catch (error) {
+        console.error("Fetch assignees error:", error);
+        res.status(500).json({ message: "Failed to fetch assignees" });
     }
 };
