@@ -40,7 +40,7 @@ export const login = async (req, res) => {
             { userId: user._id, role: user.role },
             process.env.JWT_SECRET,
             {
-                algorithm: process.env.JWT_ALGO,
+                algorithm: "HS256",
                 expiresIn: process.env.JWT_EXPIRATION
             }
         );
