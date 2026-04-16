@@ -24,7 +24,6 @@ export function Login() {
             onSuccess: (data) => {
                 const { token, user } = data;
                 login(token, user);
-                toast.success("Successfully logged in");
                 if (user.role === "Warehouse Admin") {
                     navigate("/inventory");
                 } else {
@@ -32,7 +31,7 @@ export function Login() {
                 }
             },
             onError: (error: any) => {
-                toast.error(error.response?.data?.message || "Login failed");
+                // Inline error display handles this
             }
         });
     };

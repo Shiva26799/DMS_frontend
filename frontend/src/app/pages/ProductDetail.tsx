@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { useProductDetail, useWarehouses, useUpdateProduct, useDeleteProduct } from "../hooks/useProducts";
+import { validateFileSize } from "../utils/file";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -103,6 +104,10 @@ export function ProductDetail() {
   const handleNewImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      if (!validateFileSize(file)) {
+        e.target.value = "";
+        return;
+      }
       setNewImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => setNewImagePreview(reader.result as string);

@@ -3,8 +3,9 @@ import { Dealer } from "../models/dealer.model.js";
 
 /**
  * Middleware: Ensures the requesting user can view/manage a specific maintenance record.
+ * Uses Safe ID extraction to handle populated Mongoose objects.
  * - Super Admin: Full access.
- * - Distributor: Access only to records of their subordinate dealers, or their own (acting as dealer).
+ * - Distributor: Access to records of their subordinate dealers, or their own.
  * - Dealer: Access only to their own records.
  */
 export const canManageMaintenance = async (req, res, next) => {
@@ -17,33 +18,32 @@ export const canManageMaintenance = async (req, res, next) => {
         const record = await Maintenance.findById(req.params.id);
         if (!record) return res.status(404).json({ message: "Maintenance record not found" });
 
-        // Some maintenance records might just have dealerName but not dealerId, handle those or assume they need dealerId
-        const recordDealerId = record.dealerId ? String(record.dealerId) : null;
+        // Safe ID extraction
+        const userId = String(user._id?._id || user._id);
+        const userDealerId = user.dealerId ? String(user.dealerId._id || user.dealerId) : null;
+        const recordDealerId = record.dealerId ? String(record.dealerId?._id || record.dealerId) : null;
 
         if (user.role === "Dealer") {
-            // Dealer must own the record
-            if (recordDealerId !== String(user.dealerId)) {
+            if (!recordDealerId || recordDealerId !== userDealerId) {
                 return res.status(403).json({ message: "Access denied: This maintenance record does not belong to your dealership." });
             }
             return next();
         }
 
         if (user.role === "Distributor") {
-            // Record might belong to Distributor acting as pseudo-dealer, or a dealer under the distributor
-            if (recordDealerId === String(user._id)) {
+            // Record might belong to Distributor acting as pseudo-dealer
+            if (recordDealerId === userId) {
                 return next();
             }
 
             // Check if dealer belongs to this distributor
             if (recordDealerId) {
-                const dealer = await Dealer.findOne({ _id: recordDealerId, distributorId: user._id });
-                if (!dealer) {
-                    return res.status(403).json({ message: "Access denied: This dealer is not under your distribution network." });
+                const dealer = await Dealer.findOne({ _id: record.dealerId?._id || record.dealerId, distributorId: user._id?._id || user._id });
+                if (dealer) {
+                    return next();
                 }
-                return next();
-            } else {
-                 return res.status(403).json({ message: "Access denied: Maintenance record lacks dealer association." });
             }
+            return res.status(403).json({ message: "Access denied: This dealer is not under your distribution network." });
         }
 
         return res.status(403).json({ message: "Access denied." });

@@ -19,6 +19,7 @@ import {
 import { ProductCombobox } from "../components/ProductCombobox";
 import { useWarranty, WarrantyClaim } from "../context/WarrantyContext";
 import { useAuth } from "../context/AuthContext";
+import { validateFileSize } from "../utils/file";
 
 export function WarrantyDetail() {
   const { id } = useParams();
@@ -85,14 +86,19 @@ export function WarrantyDetail() {
       setIsUpdating(true);
       const currentNotes = extraData.inspectionNotes || extraData.evaluationNotes || extraData.hoNotes || "";
       let latestClaim = claim;
-      for (let i = 0; i < e.target.files.length; i++) {
-         latestClaim = await uploadMedia(claim._id, e.target.files[i], claim.status, currentNotes);
+      
+      const files = Array.from(e.target.files);
+      for (const file of files) {
+        if (!validateFileSize(file)) continue;
+        latestClaim = await uploadMedia(claim._id, file, claim.status, currentNotes);
       }
+      
       setClaim(latestClaim);
     } catch (error) {
       console.error("Upload failed:", error);
     } finally {
       setIsUpdating(false);
+      e.target.value = ""; // Clear for future pick
     }
   };
 

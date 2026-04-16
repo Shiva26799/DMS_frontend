@@ -17,19 +17,24 @@ export const getCustomers = async (req, res) => {
             query.customerName = { $regex: search, $options: "i" };
         }
 
+        // Safe ID extraction
+        const userId = String(user._id?._id || user._id);
+        const userDealerId = user.dealerId ? String(user.dealerId._id || user.dealerId) : null;
+
         if (user.role === "Dealer") {
-            if (!user.dealerId) {
+            if (!userDealerId) {
                 return res.status(403).json({ message: "Dealer account is missing dealerId linkage." });
             }
-            query.dealerId = user.dealerId;
+            query.dealerId = user.dealerId?._id || user.dealerId;
         } else if (user.role === "Distributor") {
-            const dealers = await Dealer.find({ distributorId: user._id });
+            const dealers = await Dealer.find({ distributorId: user._id?._id || user._id });
             const dealerIds = dealers.map(d => d._id);
             query.$or = [
                 { dealerId: { $in: dealerIds } },
-                { assignedTo: user._id }
+                { assignedTo: user._id?._id || user._id }
             ];
         }
+        // Super Admin: no extra filters
 
         const totalCustomers = await Lead.countDocuments(query);
         const customers = await Lead.find(query)
@@ -64,14 +69,19 @@ export const getCustomerById = async (req, res) => {
 
         if (!customer) return res.status(404).json({ message: "Customer not found" });
 
+        // Safe ID extraction
+        const userId = String(user._id?._id || user._id);
+        const userDealerId = user.dealerId ? String(user.dealerId._id || user.dealerId) : null;
+        const customerDealerId = String(customer.dealerId?._id || customer.dealerId);
+
         // RBAC Check
-        if (user.role === "Dealer" && String(customer.dealerId?._id || customer.dealerId) !== String(user.dealerId)) {
+        if (user.role === "Dealer" && customerDealerId !== userDealerId) {
             return res.status(403).json({ message: "Unauthorized access to this customer" });
         }
 
         if (user.role === "Distributor") {
-            const dealer = await Dealer.findOne({ _id: customer.dealerId?._id || customer.dealerId, distributorId: user._id });
-            if (!dealer && String(customer.assignedTo) !== String(user._id)) {
+            const dealer = await Dealer.findOne({ _id: customer.dealerId?._id || customer.dealerId, distributorId: user._id?._id || user._id });
+            if (!dealer && String(customer.assignedTo) !== userId) {
                 return res.status(403).json({ message: "Unauthorized access to this customer" });
             }
         }
@@ -89,14 +99,19 @@ export const updateCustomer = async (req, res) => {
         const existingCustomer = await Lead.findOne({ _id: req.params.id, stage: "Customer" });
         if (!existingCustomer) return res.status(404).json({ message: "Customer not found" });
 
+        // Safe ID extraction
+        const userId = String(user._id?._id || user._id);
+        const userDealerId = user.dealerId ? String(user.dealerId._id || user.dealerId) : null;
+        const customerDealerId = String(existingCustomer.dealerId?._id || existingCustomer.dealerId);
+
         // RBAC Check
-        if (user.role === "Dealer" && String(existingCustomer.dealerId) !== String(user.dealerId)) {
+        if (user.role === "Dealer" && customerDealerId !== userDealerId) {
             return res.status(403).json({ message: "Unauthorized edit attempt" });
         }
 
         if (user.role === "Distributor") {
-            const dealer = await Dealer.findOne({ _id: existingCustomer.dealerId, distributorId: user._id });
-            if (!dealer && String(existingCustomer.assignedTo) !== String(user._id)) {
+            const dealer = await Dealer.findOne({ _id: existingCustomer.dealerId?._id || existingCustomer.dealerId, distributorId: user._id?._id || user._id });
+            if (!dealer && String(existingCustomer.assignedTo) !== userId) {
                 return res.status(403).json({ message: "Unauthorized edit attempt" });
             }
         }
@@ -117,14 +132,19 @@ export const deleteCustomer = async (req, res) => {
         const customer = await Lead.findOne({ _id: req.params.id, stage: "Customer" });
         if (!customer) return res.status(404).json({ message: "Customer not found" });
 
+        // Safe ID extraction
+        const userId = String(user._id?._id || user._id);
+        const userDealerId = user.dealerId ? String(user.dealerId._id || user.dealerId) : null;
+        const customerDealerId = String(customer.dealerId?._id || customer.dealerId);
+
         // RBAC Check
-        if (user.role === "Dealer" && String(customer.dealerId) !== String(user.dealerId)) {
+        if (user.role === "Dealer" && customerDealerId !== userDealerId) {
             return res.status(403).json({ message: "Unauthorized deletion attempt" });
         }
 
         if (user.role === "Distributor") {
-            const dealer = await Dealer.findOne({ _id: customer.dealerId, distributorId: user._id });
-            if (!dealer && String(customer.assignedTo) !== String(user._id)) {
+            const dealer = await Dealer.findOne({ _id: customer.dealerId?._id || customer.dealerId, distributorId: user._id?._id || user._id });
+            if (!dealer && String(customer.assignedTo) !== userId) {
                 return res.status(403).json({ message: "Unauthorized deletion attempt" });
             }
         }

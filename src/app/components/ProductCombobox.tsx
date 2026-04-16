@@ -22,13 +22,21 @@ interface ProductComboboxProps {
   multiple?: boolean;
   placeholder?: string;
   className?: string;
+  warehouseId?: string;
+  ownerType?: "Warehouse" | "Dealer" | "Own Stock";
+  dealerId?: string;
+  disabled?: boolean;
 }
 
 export function ProductCombobox({ 
   onSelect, 
   multiple = false,
   placeholder = "Select product...", 
-  className 
+  className,
+  warehouseId,
+  ownerType,
+  dealerId,
+  disabled = false
 }: ProductComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const [selectedProducts, setSelectedProducts] = React.useState<Product[]>([])
@@ -38,7 +46,8 @@ export function ProductCombobox({
   const [isLoading, setIsLoading] = React.useState(false)
   const [page, setPage] = React.useState(1)
   const [hasMore, setHasMore] = React.useState(true)
-  const [coords, setCoords] = React.useState({ top: 0, left: 0, width: 0 })
+  const [totalProducts, setTotalProducts] = React.useState(0)
+  const [coords, setCoords] = React.useState({ top: 0, left: 0, width: 0, maxHeight: 300 })
   const debouncedSearch = useDebounce(search, 300)
   
   const containerRef = React.useRef<HTMLDivElement>(null)
@@ -46,22 +55,26 @@ export function ProductCombobox({
 
   // Fetch when search changes or opened
   React.useEffect(() => {
-    if (open) {
+    if (open && !disabled) {
       setPage(1)
       setProducts([])
       setHasMore(true)
       fetchProducts(1, debouncedSearch, true)
     }
-  }, [debouncedSearch, open])
+  }, [debouncedSearch, open, disabled])
 
   // Position tracking
   const updateCoords = () => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom - 20 // 20px padding from screen edge
+      const maxHeight = Math.max(160, Math.min(300, spaceBelow)) // Min 160px, Max 300px
+      
       setCoords({
-        top: rect.bottom + window.scrollY,
-        left: rect.left + window.scrollX,
-        width: rect.width
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        maxHeight
       })
     }
   }
@@ -93,18 +106,78 @@ export function ProductCombobox({
   }, [])
 
   const fetchProducts = async (pageNum: number, searchStr: string, isNewSearch: boolean) => {
-    if (isLoading && !isNewSearch) return
+    if ((isLoading && !isNewSearch) || disabled) return
+    
+    // Safety check: if fulfillment is Warehouse, must have warehouseId
+    if (ownerType === "Warehouse" && !warehouseId) {
+      setProducts([]);
+      setTotalProducts(0);
+      setHasMore(false);
+      return;
+    }
+
     setIsLoading(true)
     try {
-      const res = await apiClient.get(`products?search=${searchStr}&page=${pageNum}&limit=20&_t=${Date.now()}`)
-      const data = res.data?.products || []
-      const mappedProducts = data.map((p: any) => ({
-        ...p,
-        id: p._id,
-      }))
+      let endpoint = `products?search=${searchStr}&page=${pageNum}&limit=20&_t=${Date.now()}`;
+      
+      // If warehouse or own stock is specified, use inventory endpoints
+      if (ownerType === "Warehouse" && warehouseId) {
+        endpoint = `inventory/warehouse?warehouseId=${warehouseId}&search=${searchStr}&page=${pageNum}&limit=20`;
+      } else if (ownerType === "Dealer" || ownerType === "Own Stock") {
+        const dId = dealerId || "";
+        endpoint = `inventory/own?dealerId=${dId}&search=${searchStr}&page=${pageNum}&limit=20`;
+      }
+
+      const res = await apiClient.get(endpoint)
+      
+      let mappedProducts: Product[] = [];
+      const responseData = res.data;
+      
+      // Handle different response formats (Array for Inventory, Object for Products)
+      if (Array.isArray(responseData)) {
+        // Simple array structure (Inventory)
+        mappedProducts = responseData.map((item: any) => ({
+          ...(item.productId || {}),
+          id: item.productId?._id || item.productId?.id,
+          stock: item.quantity
+        })).filter(p => !!p.id);
+      } else if (responseData?.data && Array.isArray(responseData.data)) {
+        // Paginated object structure (Inventory or Products)
+        mappedProducts = responseData.data.map((item: any) => {
+          const product = item.productId || item.product || item;
+          return {
+            ...product,
+            id: product._id || product.id,
+            stock: item.quantity
+          };
+        }).filter((p: any) => !!p.id);
+      } else if (responseData?.products && Array.isArray(responseData.products)) {
+        // Standard products structure
+        mappedProducts = responseData.products.map((p: any) => ({
+          ...p,
+          id: p._id || p.id,
+        })).filter((p: any) => !!p.id);
+      }
       
       setProducts(prev => isNewSearch ? mappedProducts : [...prev, ...mappedProducts])
-      setHasMore(pageNum < (res.data?.totalPages || 0))
+      
+      // Pagination handling
+      let totalPages = 1;
+      let total = 0;
+      
+      if (responseData?.pagination) {
+        totalPages = responseData.pagination.pages || responseData.pagination.totalPages || 1;
+        total = responseData.pagination.total || 0;
+      } else if (responseData?.totalPages) {
+        totalPages = responseData.totalPages;
+        total = responseData.total || 0;
+      } else if (Array.isArray(responseData)) {
+        totalPages = 1;
+        total = responseData.length;
+      }
+      
+      setTotalProducts(total);
+      setHasMore(pageNum < totalPages)
     } catch (error) {
       console.error("Failed to fetch products:", error)
     } finally {
@@ -139,6 +212,15 @@ export function ProductCombobox({
     }
   }
 
+  const handleClear = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSingleValue(null)
+    setSearch("")
+    onSelect(null)
+    setOpen(false)
+  }
+
   const removeTag = (e: React.MouseEvent, productId: string) => {
     console.log(`[DEBUG] removeTag called for product: ${productId}`)
     e.preventDefault()
@@ -152,18 +234,22 @@ export function ProductCombobox({
   const dropdownList = open && (
     <div 
       id="product-dropdown-portal"
-      className="fixed bg-white border shadow-2xl rounded-md overflow-hidden z-[10000] pointer-events-auto flex flex-col"
+      className="fixed bg-white border shadow-2xl rounded-md overflow-hidden z-[10000] pointer-events-auto flex flex-col animate-in fade-in slide-in-from-top-2 duration-200"
       style={{ 
-        top: coords.top + 4, 
+        top: coords.top, 
         left: coords.left, 
         width: coords.width,
-        maxHeight: "300px" 
+        maxHeight: `${coords.maxHeight}px`
       }}
       onWheel={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div id="scrollableDiv" className="flex flex-col w-full h-[300px] overflow-auto overscroll-contain">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+        <span>Products Found: {totalProducts}</span>
+        {isLoading && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+      </div>
+      <div id="scrollableDiv" className="flex flex-col w-full overflow-auto overscroll-contain" style={{ height: coords.maxHeight }}>
         <InfiniteScroll
           dataLength={products.length}
           next={handleNext}
@@ -207,8 +293,15 @@ export function ProductCombobox({
                         isSelected ? "opacity-100" : "opacity-0"
                       )}
                     />
-                    <div className="flex flex-col items-start overflow-hidden text-left">
-                      <span className="truncate w-full font-medium">{product.name}</span>
+                    <div className="flex flex-col items-start overflow-hidden text-left flex-1">
+                      <div className="flex items-center justify-between w-full">
+                        <span className="truncate font-medium">{product.name}</span>
+                        {(product as any).stock !== undefined && (
+                          <Badge variant="outline" className="ml-2 text-[10px] h-4 px-1.5 bg-green-50 text-green-700 border-green-200">
+                            { (product as any).stock } in stock
+                          </Badge>
+                        )}
+                      </div>
                       <span className="text-[10px] text-gray-400 truncate w-full uppercase tracking-wider">
                         {product.sku || product.partNumber || "No SKU"}
                         {product.category ? ` • ${product.category}` : ""}
@@ -228,10 +321,12 @@ export function ProductCombobox({
     <div className={cn("relative w-full", className)} ref={containerRef}>
       <div
         className={cn(
-          "flex min-h-[44px] w-full items-center gap-2 rounded-md border border-input bg-white p-2 text-sm ring-offset-background cursor-text focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all shadow-sm",
-          open && "ring-2 ring-blue-500 border-blue-500 shadow-md"
+          "flex min-h-[44px] w-full items-center gap-2 rounded-md border border-input bg-white p-2 text-sm ring-offset-background transition-all shadow-sm",
+          disabled ? "opacity-50 cursor-not-allowed bg-gray-50" : "cursor-text focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500",
+          open && !disabled && "ring-2 ring-blue-500 border-blue-500 shadow-md"
         )}
         onClick={() => {
+          if (disabled) return
           setOpen(true)
           inputRef.current?.focus()
         }}
@@ -264,10 +359,12 @@ export function ProductCombobox({
               placeholder={multiple ? (selectedProducts.length === 0 ? placeholder : "") : (singleValue ? "" : placeholder)}
               value={search}
               onChange={(e) => {
+                if (disabled) return
                 setSearch(e.target.value)
                 setOpen(true)
               }}
-              onFocus={() => setOpen(true)}
+              onFocus={() => !disabled && setOpen(true)}
+              disabled={disabled}
               onKeyDown={(e) => {
                 if (e.key === 'Backspace' && search === "" && multiple && selectedProducts.length > 0) {
                   const last = selectedProducts[selectedProducts.length - 1]
@@ -282,6 +379,17 @@ export function ProductCombobox({
             )}
           </div>
         </div>
+        
+        {!multiple && singleValue && !disabled && (
+          <button
+            type="button"
+            className="h-7 w-7 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors mr-1"
+            onClick={handleClear}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+        
         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100 transition-opacity" />
       </div>
 

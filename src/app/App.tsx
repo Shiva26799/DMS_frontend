@@ -13,13 +13,13 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <DealerProvider>
-          <OrderProvider>
-            <WarrantyProvider>
+        <WarrantyProvider>
+          <DealerProvider>
+            <OrderProvider>
               <RouterProvider router={router} />
-            </WarrantyProvider>
-          </OrderProvider>
-        </DealerProvider>
+            </OrderProvider>
+          </DealerProvider>
+        </WarrantyProvider>
       </AuthProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>

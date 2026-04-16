@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router";
 import { Plus, Filter, Search, Warehouse } from "lucide-react";
+import Pagination from "../components/Pagination";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
@@ -34,13 +35,14 @@ import { OrderForm } from "../components/OrderForm";
 
 export function OrderManagement() {
   const { dealers } = useDealers();
-  const { orders, addOrder } = useOrders();
-  const [isLoading, setIsLoading] = useState(true);
+  const { orders, pagination, stats, refreshOrders, addOrder } = useOrders();
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const [isLocalLoading, setIsLocalLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    refreshOrders(page, limit).finally(() => setIsLocalLoading(false));
+  }, [page, limit, refreshOrders]);
   const { role, isSuperAdmin } = useAuth();
   const { data: visibleWarehouses = [], isLoading: isWarehousesLoading } = useVisibleWarehouses();
 
@@ -50,26 +52,28 @@ export function OrderManagement() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const filteredOrders = orders.filter((order) => {
-    const matchesStatus =
-      filterStatus === "all" ||
-      order.paymentStatus.toLowerCase() === filterStatus ||
-      order.deliveryStatus.toLowerCase().includes(filterStatus);
-    const matchesSearch =
-      order.orderNumber.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-      order.dealer.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
-    return matchesStatus && matchesSearch;
-  });
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      const matchesStatus =
+        filterStatus === "all" ||
+        (order.paymentStatus || "").toLowerCase().includes(filterStatus.toLowerCase()) ||
+        (order.deliveryStatus || "").toLowerCase().includes(filterStatus.toLowerCase());
+      const matchesSearch =
+        (order.orderNumber || "").toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        (order.dealer || "").toLowerCase().includes(debouncedSearchQuery.toLowerCase());
+      return matchesStatus && matchesSearch;
+    });
+  }, [orders, filterStatus, debouncedSearchQuery]);
 
-  const totalOrders = orders.length;
-  const totalValue = orders.reduce((sum, order) => sum + (Number(order.totalValue) || 0), 0);
-  const pendingApprovals = orders.filter(
+  const totalOrders = stats?.totalOrders || orders.length;
+  const totalValue = stats?.totalValue || orders.reduce((sum, order) => sum + (Number(order.totalValue) || 0), 0);
+  const pendingApprovals = useMemo(() => orders.filter(
     (o) =>
       o.currentStage === "PO Upload" ||
       o.currentStage === "Payment Upload" ||
       o.currentStage === "Payment Verification" ||
       o.currentStage === "Order Approval"
-  ).length;
+  ).length, [orders]);
 
   return (
     <div className="p-6 space-y-6">
@@ -107,11 +111,11 @@ export function OrderManagement() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <p className="text-sm text-gray-600">Total Orders</p>
-          {isLoading ? <Skeleton className="h-8 w-16 mt-1" /> : <p className="text-2xl font-bold text-gray-900 mt-1">{totalOrders}</p>}
+          {isLocalLoading ? <Skeleton className="h-8 w-16 mt-1" /> : <p className="text-2xl font-bold text-gray-900 mt-1">{totalOrders}</p>}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Total Value</p>
-          {isLoading ? (
+          {isLocalLoading ? (
             <Skeleton className="h-8 w-24 mt-1" />
           ) : (
             <p className="text-2xl font-bold text-green-600 mt-1">
@@ -121,11 +125,11 @@ export function OrderManagement() {
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Pending Approvals</p>
-          {isLoading ? <Skeleton className="h-8 w-12 mt-1" /> : <p className="text-2xl font-bold text-orange-600 mt-1">{pendingApprovals}</p>}
+          {isLocalLoading ? <Skeleton className="h-8 w-12 mt-1" /> : <p className="text-2xl font-bold text-orange-600 mt-1">{pendingApprovals}</p>}
         </Card>
         <Card className="p-4">
           <p className="text-sm text-gray-600">Avg Order Value</p>
-          {isLoading ? (
+          {isLocalLoading ? (
             <Skeleton className="h-8 w-24 mt-1" />
           ) : (
             <p className="text-2xl font-bold text-gray-900 mt-1">
@@ -176,7 +180,10 @@ export function OrderManagement() {
                   Order Number
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
-                  Dealer
+                  Dealer/Distributor
+                </th>
+                <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                  Customer
                 </th>
                 <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                   Product
@@ -202,11 +209,12 @@ export function OrderManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {isLoading ? (
+              {isLocalLoading ? (
                 Array(5).fill(0).map((_, i) => (
                   <tr key={i}>
                     <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
                     <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
                     <td className="px-6 py-4">
                       <div className="space-y-2">
                         <Skeleton className="h-4 w-24" />
@@ -236,6 +244,9 @@ export function OrderManagement() {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {order.dealer}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      {order.customerName || <span className="text-gray-300 italic text-xs">—</span>}
                     </td>
                     <td className="px-6 py-4">
                       <div>
@@ -275,6 +286,17 @@ export function OrderManagement() {
             </tbody>
           </table>
         </div>
+        {pagination && (
+          <div className="px-6 pb-4">
+            <Pagination
+              currentPage={pagination.page}
+              totalPages={pagination.pages}
+              onPageChange={setPage}
+              totalItems={pagination.total}
+              itemsPerPage={limit}
+            />
+          </div>
+        )}
       </Card>
     </div>
   );

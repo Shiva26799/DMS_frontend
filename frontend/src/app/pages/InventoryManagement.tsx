@@ -4,6 +4,7 @@ import { useDealers } from "../hooks/useDealers";
 import { useAuth } from "../context/AuthContext";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useDebounce } from "../hooks/useDebounce";
+import { useRBAC } from "../hooks/useRBAC";
 import * as XLSX from "xlsx";
 import Pagination from "../components/Pagination";
 import {
@@ -75,7 +76,7 @@ function UpdateStockDialog({
     updateMutation.mutate({
       productId: selectedItem.productId._id,
       ownerType: selectedItem.ownerType,
-      ownerId: selectedItem.ownerId._id || selectedItem.ownerId,
+      ownerId: selectedItem.ownerId?._id || selectedItem.ownerId,
       quantity: Number(updateForm.quantity),
       type: updateForm.type,
       binLocation: updateForm.binLocation,
@@ -180,6 +181,9 @@ function UpdateStockDialog({
 
 export function InventoryManagement() {
   const { user, role, isDistributor, isDealer, isSuperAdmin, isWarehouseAdmin } = useAuth();
+  const { checkPermission } = useRBAC();
+  const canManageStock = checkPermission("inventory", "manage");
+  
   const { data: visibleWarehouses = [] } = useVisibleWarehouses();
   const updateMutation = useUpdateInventoryStock();
   const [activeTab, setActiveTab] = useState(isSuperAdmin ? "warehouse-stock" : "my-stock");
@@ -332,7 +336,7 @@ export function InventoryManagement() {
           </p>
         </div>
         <div className="flex gap-2">
-          {(isSuperAdmin || isWarehouseAdmin || isDealer || isDistributor) && (
+          {canManageStock && (
             <>
               {((isDealer || isDistributor || isWarehouseAdmin) && activeTab === "my-stock") || (isSuperAdmin && activeTab === "warehouse-stock") ? (
                 <Button
@@ -347,8 +351,8 @@ export function InventoryManagement() {
               {((isDealer || isDistributor || isWarehouseAdmin) && activeTab === "my-stock") || (isSuperAdmin && activeTab === "warehouse-stock") ? (
                 <Button className="bg-green-600 hover:bg-green-700" onClick={handleAddProduct}>
                   <Plus className="w-4 h-4 mr-2" />
-                  {isDealer || isDistributor 
-                    ? "Add Product to My Inventory" 
+                  {isDealer || isDistributor
+                    ? "Add Product to My Inventory"
                     : `Add Product to ${activeTab === "my-stock" ? "My Inventory" : "Warehouse"}`
                   }
                 </Button>
@@ -543,7 +547,7 @@ export function InventoryManagement() {
                       <StatusBadge status={getStatus(item.quantity, item.productId?.reorderLevel)} />
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {(isSuperAdmin || isWarehouseAdmin || activeTab === "my-stock") && (
+                      {canManageStock && (isSuperAdmin || isWarehouseAdmin || activeTab === "my-stock") && (
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" onClick={() => handleOpenUpdateDialog(item)}>
                             <Edit className="w-3.5 h-3.5 mr-1" /> Update
@@ -596,7 +600,7 @@ export function InventoryManagement() {
         isOpen={isAddDialogOpen}
         onClose={setIsAddDialogOpen}
         defaultOwnerType={activeTab === "my-stock" ? (isDealer ? "Dealer" : isDistributor ? "Distributor" : "Warehouse") : "Warehouse"}
-        defaultOwnerId={activeTab === "my-stock" ? (isDealer ? (user?.dealerId || user?.id) : isWarehouseAdmin ? user?.managedWarehouseId : user?.id) : user?.managedWarehouseId}
+        defaultOwnerId={activeTab === "my-stock" ? (isDealer ? (user?.dealerId?._id || user?.dealerId || user?.id) : isWarehouseAdmin ? (user?.managedWarehouseId?._id || user?.managedWarehouseId) : user?.id) : (user?.managedWarehouseId?._id || user?.managedWarehouseId)}
         products={products}
       />
 
@@ -606,7 +610,7 @@ export function InventoryManagement() {
         selectedFile={selectedFile}
         setSelectedFile={setSelectedFile}
         defaultOwnerType={activeTab === "my-stock" ? (isDealer ? "Dealer" : isDistributor ? "Distributor" : "Warehouse") : "Warehouse"}
-        defaultOwnerId={activeTab === "my-stock" ? (isDealer ? (user?.dealerId || user?.id) : isWarehouseAdmin ? user?.managedWarehouseId : user?.id) : user?.managedWarehouseId}
+        defaultOwnerId={activeTab === "my-stock" ? (isDealer ? (user?.dealerId?._id || user?.dealerId || user?.id) : isWarehouseAdmin ? (user?.managedWarehouseId?._id || user?.managedWarehouseId) : user?.id) : (user?.managedWarehouseId?._id || user?.managedWarehouseId)}
       />
     </div>
   );
@@ -674,7 +678,7 @@ function BulkInventoryImportDialog({
           }
 
           const importedItems: any[] = [];
-          
+
           // Header detection
           let skuIdx = -1, qtyIdx = -1, locIdx = -1;
           let headerRowIdx = -1;
@@ -684,7 +688,7 @@ function BulkInventoryImportDialog({
             const sIdx = row.findIndex(c => c.includes("sku") || c.includes("part no") || c.includes("identifier"));
             const qIdx = row.findIndex(c => c.includes("qty") || c.includes("quantity") || c.includes("stock") || c.includes("count") || c.includes("status"));
             const lIdx = row.findIndex(c => c.includes("loc") || c.includes("bin") || c.includes("warehouse"));
-            
+
             if (sIdx !== -1 && qIdx !== -1) {
               skuIdx = sIdx;
               qtyIdx = qIdx;
@@ -754,7 +758,7 @@ function BulkInventoryImportDialog({
             {isDealerOrDistributor ? "Bulk Add to My Inventory" : "Bulk Add Products"}
           </DialogTitle>
           <DialogDescription>
-            {isDealerOrDistributor 
+            {isDealerOrDistributor
               ? "Select an Excel file (.xlsx, .xls) to update your personal stock levels."
               : "Select an Excel file (.xlsx, .xls) and the warehouse where these items will be stored."
             }
@@ -961,8 +965,8 @@ function AddProductToInventoryDialog({
             </Button>
           </div>
           <DialogDescription>
-            {isDealerOrDistributor 
-              ? "Select products and enter initial stock details for your inventory." 
+            {isDealerOrDistributor
+              ? "Select products and enter initial stock details for your inventory."
               : "Select a target warehouse, choose products, and enter initial stock details."}
           </DialogDescription>
         </DialogHeader>

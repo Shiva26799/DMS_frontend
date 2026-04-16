@@ -12,11 +12,11 @@ export const createClaim = async (req, res) => {
         // --- RBAC: Determine dealerId based on role ---
         if (user.role === "Dealer") {
             // Dealer can only file for their own dealership
-            dealerId = user.dealerId;
+            dealerId = user.dealerId?._id || user.dealerId;
             buyerType = "Dealer";
         } else if (user.role === "Distributor") {
             // Distributor can only file for their OWN network, effectively acting as "User"
-            dealerId = user._id;
+            dealerId = user._id?._id || user._id;
             buyerType = "User";
         } else if (user.role === "Super Admin") {
             // Super Admin can create for any dealer or distributor
@@ -57,7 +57,7 @@ export const createClaim = async (req, res) => {
             buyerType,
             dealerId,
             distributorId: buyerType === "Dealer" ? dealer.distributorId : dealerId,
-            createdBy: user._id,
+            createdBy: user._id?._id || user._id,
             customerName: customerName || "",
             metadata: {
                 DealerName: dealer.companyName || dealer.name,
@@ -102,14 +102,16 @@ export const getClaims = async (req, res) => {
         let query = {};
 
         if (user.role === "Dealer") {
-            query = { dealerId: user.dealerId, buyerType: "Dealer" };
+            const userDealerId = user.dealerId?._id || user.dealerId;
+            query = { dealerId: userDealerId, buyerType: "Dealer" };
         } else if (user.role === "Distributor") {
-            const dealers = await Dealer.find({ distributorId: user._id });
+            const userId = user._id?._id || user._id;
+            const dealers = await Dealer.find({ distributorId: userId });
             const dealerIds = dealers.map(d => d._id);
             // Distributor can see their own claims OR their dealers' claims
             query = {
                 $or: [
-                    { dealerId: user._id, buyerType: "User" },
+                    { dealerId: userId, buyerType: "User" },
                     { dealerId: { $in: dealerIds }, buyerType: "Dealer" }
                 ]
             };
@@ -140,15 +142,18 @@ export const getClaimById = async (req, res) => {
         if (!claim) return res.status(404).json({ message: "Claim not found" });
 
         // Security: Role-based access control for specific claim
-        if (user.role === "Dealer" && String(claim.dealerId?._id || claim.dealerId) !== String(user.dealerId)) {
+        const userDealerId = user.dealerId ? String(user.dealerId._id || user.dealerId) : null;
+        const userId = String(user._id?._id || user._id);
+
+        if (user.role === "Dealer" && String(claim.dealerId?._id || claim.dealerId) !== userDealerId) {
             return res.status(403).json({ message: "Unauthorized access to this warranty claim." });
         }
 
         if (user.role === "Distributor") {
-            if (claim.buyerType === "User" && String(claim.dealerId?._id || claim.dealerId) === String(user._id)) {
+            if (claim.buyerType === "User" && String(claim.dealerId?._id || claim.dealerId) === userId) {
                 // Distributor's own claim: OK
             } else if (claim.buyerType === "Dealer") {
-                 const dealer = await Dealer.findOne({ _id: claim.dealerId?._id || claim.dealerId, distributorId: user._id });
+                 const dealer = await Dealer.findOne({ _id: claim.dealerId?._id || claim.dealerId, distributorId: user._id?._id || user._id });
                  if (!dealer) {
                      return res.status(403).json({ message: "Unauthorized access to this claim (not your dealer)." });
                  }
@@ -177,7 +182,7 @@ export const updateClaimStatus = async (req, res) => {
             if (claim.buyerType === "Dealer") {
                  return res.status(403).json({ message: "Read-only access: Distributors cannot modify claims originating from their dealers." });
             }
-            if (String(claim.dealerId) !== String(user._id)) {
+            if (String(claim.dealerId?._id || claim.dealerId) !== String(user._id?._id || user._id)) {
                  return res.status(403).json({ message: "Unauthorized to update this claim." });
             }
         }
@@ -207,7 +212,7 @@ export const updateClaimStatus = async (req, res) => {
         if (isCreatorStage && !["Super Admin", "Admin"].includes(user.role)) {
              // If not an admin, they MUST be the person who created the claim
              // Handle legacy data: if createdBy is missing, we allow it (or check dealerId)
-             if (claim.createdBy && String(claim.createdBy) !== String(user._id)) {
+             if (claim.createdBy && String(claim.createdBy?._id || claim.createdBy) !== String(user._id?._id || user._id)) {
                  return res.status(403).json({ message: "Only the claim creator or an administrator can update this stage." });
              }
         }
@@ -303,7 +308,7 @@ export const addMedia = async (req, res) => {
             if (claim.buyerType === "Dealer") {
                  return res.status(403).json({ message: "Read-only access: Distributors cannot modify claims originating from their dealers." });
             }
-             if (String(claim.dealerId) !== String(user._id)) {
+             if (String(claim.dealerId?._id || claim.dealerId) !== String(user._id?._id || user._id)) {
                  return res.status(403).json({ message: "Unauthorized to update this claim." });
             }
         }
@@ -345,14 +350,15 @@ export const getCustomerProducts = async (req, res) => {
         
         // --- RBAC Enforcements ---
         if (user.role === "Dealer") {
-            dealerId = user.dealerId;
+            dealerId = user.dealerId?._id || user.dealerId;
             bType = "Dealer";
         } else if (user.role === "Distributor") {
             if (!dealerId) {
                 return res.status(400).json({ message: "dealerId is required for distributors" });
             }
-            if (dealerId !== String(user._id)) {
-                 const dealerCheck = await Dealer.findOne({ _id: dealerId, distributorId: user._id });
+            const userId = String(user._id?._id || user._id);
+            if (dealerId !== userId) {
+                 const dealerCheck = await Dealer.findOne({ _id: dealerId, distributorId: user._id?._id || user._id });
                  if (!dealerCheck) {
                      return res.status(403).json({ message: "Access denied: Cannot fetch products for a dealer outside your network." });
                  }

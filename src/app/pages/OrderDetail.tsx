@@ -1,6 +1,6 @@
 import { useParams, Link } from "react-router";
-import { useState, useEffect, useRef } from "react";
-import { ArrowLeft, FileText, Upload, CheckCircle, Clock, Eye, Download, Trash2, RefreshCw, ClipboardList, Truck, Wrench, ShieldCheck } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { ArrowLeft, FileText, Upload, CheckCircle, Clock, Eye, Download, Trash2, RefreshCw, ClipboardList, Truck, Wrench, ShieldCheck, UserCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
@@ -18,9 +18,20 @@ import {
   DialogDescription,
   DialogFooter,
 } from "../components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 
 import { Skeleton } from "../components/ui/skeleton";
 import { toast } from "sonner";
+import { validateFileSize } from "../utils/file";
 
 export function OrderDetail() {
   const { id } = useParams();
@@ -36,7 +47,6 @@ export function OrderDetail() {
     markOrderAsReceived,
     markInstallationComplete,
     registerWarranty,
-    updateOrderStatus,
     cancelOrder,
     uploadAdditionalDocument,
     deleteAdditionalDocument,
@@ -60,7 +70,7 @@ export function OrderDetail() {
   const [engineNumber, setEngineNumber] = useState("");
   const [warrantyStartDate, setWarrantyStartDate] = useState(new Date().toISOString().split("T")[0]);
   const [warrantyMonths, setWarrantyMonths] = useState<number>(12);
-  const [maintenanceMonths, setMaintenanceMonths] = useState<number>(6);
+  const [maintenanceService, setMaintenanceService] = useState<string>("None");
   const [warrantyEndDate, setWarrantyEndDate] = useState("");
   const [warrantyDocument, setWarrantyDocument] = useState<File | null>(null);
 
@@ -92,6 +102,9 @@ export function OrderDetail() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [isStatusChangeDialogOpen, setIsStatusChangeDialogOpen] = useState(false);
   const [jumpTargetStage, setJumpTargetStage] = useState<string>("");
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const [isStageJumpDialogOpen, setIsStageJumpDialogOpen] = useState(false);
+  const [pendingStageJump, setPendingStageJump] = useState<{ name: string, progress: number } | null>(null);
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -104,10 +117,44 @@ export function OrderDetail() {
     fetchOrder();
   }, [id, getOrder]);
 
-  const dealer = order ? getDealer(order.dealerId) : null;
+  const dealerFromContext = order ? getDealer(order.dealerId) : null;
+
+  // Create a display dealer object using context or order metadata/populated data
+  const dealer = useMemo(() => {
+    if (dealerFromContext) return dealerFromContext;
+    if (!order) return null;
+
+    // Fallback: If order.dealerId is populated (an object), use its fields
+    if (order.dealerId && typeof order.dealerId === 'object') {
+      const d = order.dealerId as any;
+      return {
+        id: d._id,
+        name: d.companyName || d.name || order.dealer || "Unknown Entity",
+        code: d.code || "N/A",
+        phone: d.phone || d.contact || "N/A",
+        email: d.email || "N/A",
+        city: d.address || d.city || "N/A",
+        region: d.region || d.state || "N/A"
+      };
+    }
+
+    // Second Fallback: Use order.dealer string and generic labels
+    const dId = typeof order.dealerId === 'string' ? order.dealerId : (order.dealerId as any)?._id;
+    return {
+      id: dId || "",
+      name: order.dealer || "Unknown Entity",
+      code: "N/A",
+      phone: "N/A",
+      email: "N/A",
+      city: "N/A",
+      region: "N/A"
+    };
+  }, [dealerFromContext, order]);
 
   const handleFileUpload = async (type: "PO" | "Payment" | "LovolInvoice" | "DealerInvoice", file: File) => {
     if (!order || !order.id) return;
+
+    if (!validateFileSize(file)) return;
 
     try {
       setUploadingDoc(type);
@@ -138,7 +185,7 @@ export function OrderDetail() {
       setOrder(updatedOrder);
     } catch (error) {
       console.error("Failed to approve payment:", error);
-      alert("Failed to verify payment. Please try again.");
+      toast.error("Failed to verify payment. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -152,7 +199,7 @@ export function OrderDetail() {
       setOrder(updatedOrder);
     } catch (error) {
       console.error("Failed to approve order:", error);
-      alert("Failed to approve order. Please try again.");
+      toast.error("Failed to approve order. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -161,7 +208,7 @@ export function OrderDetail() {
   const handleUpdateDelivery = async () => {
     if (!order || !order.id) return;
     if (!transportName || !trackingId || !estimatedDeliveryDate) {
-      alert("Please fill in all delivery details");
+      toast.error("Please fill in all delivery details");
       return;
     }
 
@@ -173,9 +220,10 @@ export function OrderDetail() {
         estimatedDeliveryDate
       });
       setOrder(updatedOrder);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update delivery:", error);
-      alert("Failed to update delivery status. Please try again.");
+      const errorMsg = error.response?.data?.message || "Failed to update delivery status. Please try again.";
+      toast.error(errorMsg);
     } finally {
       setIsProcessing(false);
     }
@@ -189,7 +237,7 @@ export function OrderDetail() {
       setOrder(updatedOrder);
     } catch (error) {
       console.error("Failed to confirm receipt:", error);
-      alert("Failed to confirm receipt. Please try again.");
+      toast.error("Failed to confirm receipt. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -203,7 +251,7 @@ export function OrderDetail() {
       setOrder(updatedOrder);
     } catch (error) {
       console.error("Failed to complete installation:", error);
-      alert("Failed to complete installation. Please try again.");
+      toast.error("Failed to complete installation. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -211,8 +259,8 @@ export function OrderDetail() {
 
   const handleRegisterWarranty = async () => {
     if (!order || !order.id) return;
-    if (!machineSerialNumber) {
-      alert("Machine Serial Number is required.");
+    if (!machineSerialNumber || !engineNumber || !warrantyStartDate || !warrantyMonths || !maintenanceService || maintenanceService === "None") {
+      toast.error("All mandatory fields are required.");
       return;
     }
     try {
@@ -223,15 +271,15 @@ export function OrderDetail() {
       if (warrantyStartDate) formData.append("warrantyStartDate", warrantyStartDate);
       if (warrantyEndDate) formData.append("warrantyEndDate", warrantyEndDate);
       if (warrantyMonths) formData.append("warrantyMonths", String(warrantyMonths));
-      if (maintenanceMonths) formData.append("maintenanceMonths", String(maintenanceMonths));
+      if (maintenanceService) formData.append("maintenanceService", maintenanceService);
       if (warrantyDocument) formData.append("warrantyDocument", warrantyDocument);
 
       const updatedOrder = await registerWarranty(order.id, formData);
       setOrder(updatedOrder);
-      alert("Warranty successfully registered!");
+      toast.success("Warranty successfully registered!");
     } catch (error) {
       console.error("Failed to register warranty:", error);
-      alert("Failed to register warranty. Please try again.");
+      toast.error("Failed to register warranty. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -239,42 +287,22 @@ export function OrderDetail() {
 
   const handleCancelOrder = async () => {
     if (!order || !order.id) return;
-    if (!window.confirm("Are you sure you want to cancel this order? This action cannot be undone.")) {
-      return;
-    }
 
     try {
       setIsProcessing(true);
       const updatedOrder = await cancelOrder(order.id);
       setOrder(updatedOrder);
-      alert("Order has been cancelled.");
+      toast.success("Order has been cancelled.");
+      setIsCancelDialogOpen(false);
     } catch (error: any) {
       console.error("Failed to cancel order:", error);
-      alert(error.response?.data?.message || "Failed to cancel order. Please try again.");
+      toast.error(error.response?.data?.message || "Failed to cancel order. Please try again.");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleStageJump = async (stageName: string, progress: number) => {
-    if (!order || !order.id) return;
-    if (order.currentStage === stageName) return;
-
-    if (!window.confirm(`Are you sure you want to jump to stage: ${stageName}?`)) {
-      return;
-    }
-
-    try {
-      setIsProcessing(true);
-      const updatedOrder = await updateOrderStatus(order.id, stageName, progress);
-      setOrder(updatedOrder);
-    } catch (error) {
-      console.error("Failed to jump stage:", error);
-      alert("Failed to update stage. Please try again.");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  // Stage jumping feature has been disabled
 
   const [isReuploading, setIsReuploading] = useState(false);
   const reuploadNameRef = useRef("");
@@ -287,6 +315,8 @@ export function OrderDetail() {
 
   const handleAdditionalUpload = async () => {
     if (!pendingFile || !newDocName || !id) return;
+
+    if (!validateFileSize(pendingFile)) return;
 
     try {
       setIsProcessing(true);
@@ -340,10 +370,34 @@ export function OrderDetail() {
     }
   };
 
-  // RBAC: readOnly comes from the backend for distributors viewing orders they didn't create
-  const isReadOnly = (order as any)?.readOnly === true;
   // The creator or Super Admin can modify docs and perform lifecycle actions
-  const canModifyDocs = isSuperAdmin || !isReadOnly;
+  const canModifyDocs = isSuperAdmin || !isDealer || (isDealer && order.createdBy === user?.id);
+
+  const STAGE_NAMES = useMemo(() => {
+    if (order?.orderSource === "Own Stock") {
+      return [
+        "PO Upload",
+        "Payment Upload",
+        "Payment Verification",
+        "Installation",
+        "Warranty Registration",
+        "Closure"
+      ];
+    }
+    return [
+      "PO Upload",
+      "Payment Upload",
+      "Payment Verification",
+      "Order Approval",
+      "Invoice Generation",
+      "Delivery",
+      "Installation",
+      "Warranty Registration",
+      "Closure"
+    ];
+  }, [order?.orderSource]);
+
+  const displayCurrentStage = order?.currentStage || "";
 
   if (isLoading) {
     return (
@@ -368,7 +422,7 @@ export function OrderDetail() {
     );
   }
 
-  if (!order || !dealer) {
+  if (!order) {
     return (
       <div className="p-6">
         <div className="text-center">
@@ -381,22 +435,8 @@ export function OrderDetail() {
     );
   }
 
-  const STAGE_NAMES = [
-    "PO Upload",
-    "Payment Upload",
-    "Payment Verification",
-    "Order Approval",
-    "Invoice Generation",
-    "Delivery",
-    "Installation",
-    "Warranty Registration",
-    "Closure"
-  ];
-
-  const currentStageIndex = STAGE_NAMES.indexOf(order.currentStage);
-  const calculatedProgress = STAGE_NAMES.includes(order.currentStage)
-    ? (currentStageIndex / (STAGE_NAMES.length - 1)) * 100
-    : 0;
+  const currentStageIndex = STAGE_NAMES.indexOf(displayCurrentStage);
+  const calculatedProgress = (currentStageIndex / (STAGE_NAMES.length - 1)) * 100;
 
   const orderStages = STAGE_NAMES.map((name, index) => {
     let status = "pending" as "pending" | "completed" | "current";
@@ -420,16 +460,6 @@ export function OrderDetail() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Read-Only Banner for Distributors */}
-      {isReadOnly && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-3">
-          <Eye className="w-5 h-5 text-amber-600 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-amber-800">Read-Only View</p>
-            <p className="text-xs text-amber-600">You have view-only access to this order. Only the order creator or Super Admin can perform actions.</p>
-          </div>
-        </div>
-      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -523,8 +553,7 @@ export function OrderDetail() {
                 <div key={index} className="text-center relative">
                   <div className="bg-white inline-block">
                     <div
-                      onClick={() => isSuperAdmin && handleStageJump(stage.name, stage.progress)}
-                      className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center transition-all duration-300 ${isSuperAdmin ? 'cursor-pointer hover:scale-110' : ''} ${stage.status === "completed"
+                      className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center transition-all duration-300 ${stage.status === "completed"
                         ? "bg-green-100 text-green-600"
                         : stage.status === "current"
                           ? "bg-blue-100 shadow-md ring-4 ring-blue-50 text-blue-600"
@@ -637,24 +666,45 @@ export function OrderDetail() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12 text-sm">
                   <div className="space-y-1">
                     <p className="text-gray-500 font-medium">Company Name</p>
-                    <p className="font-semibold text-gray-900 capitalize">{dealer.name} <span className="text-xs text-gray-400 font-normal">({dealer.code})</span></p>
+                    <p className="font-semibold text-gray-900 capitalize">{dealer?.name} <span className="text-xs text-gray-400 font-normal">({dealer?.code})</span></p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-gray-500 font-medium">Phone</p>
-                    <p className="font-medium text-gray-900">{dealer.phone || (dealer as any).contact || "N/A"}</p>
+                    <p className="font-medium text-gray-900">{dealer?.phone || (dealer as any)?.contact || "N/A"}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-gray-500 font-medium">Email Address</p>
-                    <p className="font-medium text-gray-900 text-blue-600 break-all">{dealer.email}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-gray-500 font-medium">Business Address</p>
-                    <p className="font-medium text-gray-900 capitalize">
-                      {dealer.city}, {dealer.region}
-                    </p>
+                    <p className="font-medium text-gray-900 text-blue-600 break-all">{dealer?.email}</p>
                   </div>
                 </div>
               </Card>
+
+              {order.customerName && (
+                <Card className="p-6 mt-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <UserCircle className="w-5 h-5 text-blue-600" />
+                    Customer / Lead Details
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12 text-sm">
+                    <div className="space-y-1">
+                      <p className="text-gray-500 font-medium">Customer Name</p>
+                      <p className="font-semibold text-gray-900 capitalize">{order.customerName}</p>
+                    </div>
+                    {order.leadId && (
+                      <div className="space-y-1">
+                        <p className="text-gray-500 font-medium">Linked Record</p>
+                        <Link
+                          to={`/leads/${order.leadId?._id || order.leadId}`}
+                          className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1.5"
+                        >
+                          <FileText className="w-4 h-4" />
+                          View Original Lead / Customer
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="documents" className="mt-6">
@@ -775,51 +825,55 @@ export function OrderDetail() {
 
                   {/* Official Invoices */}
                   <div className="mt-6 border-t pt-6">
-                    <h4 className="text-sm font-medium text-gray-900 mb-4">Official Invoices</h4>
+                    <h4 className="text-sm font-medium text-gray-900 mb-4">
+                      {(order as any).orderSource === "Own Stock" ? "Customer Invoice" : "Official Invoices"}
+                    </h4>
                     <div className="space-y-4">
-                      {/* Lovol Invoice */}
-                      <div className={`border rounded-lg p-4 ${(order as any).documents?.lovolInvoice?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${(order as any).documents?.lovolInvoice?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
-                              3
+                      {/* Lovol Invoice - Hidden for Own Stock */}
+                      {(order as any).orderSource !== "Own Stock" && (
+                        <div className={`border rounded-lg p-4 ${(order as any).documents?.lovolInvoice?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-10 h-10 flex-shrink-0 border rounded-full flex items-center justify-center font-bold text-lg ${(order as any).documents?.lovolInvoice?.url ? 'bg-blue-100 border-blue-200 text-blue-600' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                                3
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">Lovol Invoice</p>
+                                <p className="text-xs text-gray-500">
+                                  {(order as any).documents?.lovolInvoice?.url
+                                    ? `Uploaded on ${new Date((order as any).documents.lovolInvoice.uploadedAt).toLocaleString()}`
+                                    : "Official invoice for the dealer"}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">Lovol Invoice</p>
-                              <p className="text-xs text-gray-500">
-                                {(order as any).documents?.lovolInvoice?.url
-                                  ? `Uploaded on ${new Date((order as any).documents.lovolInvoice.uploadedAt).toLocaleString()}`
-                                  : "Official invoice for the dealer"}
-                              </p>
+                            <div className="flex gap-2">
+                              {(order as any).documents?.lovolInvoice?.url ? (
+                                <>
+                                  <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: (order as any).documents.lovolInvoice.url, title: "Lovol Invoice" })} title="View">
+                                    <Eye className="w-4 h-4" />
+                                  </Button>
+                                  <a href={(order as any).documents.lovolInvoice.url} download={`Lovol_Invoice_${order.orderNumber}`} target="_blank" rel="noreferrer">
+                                    <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
+                                      <Download className="w-4 h-4" />
+                                    </Button>
+                                  </a>
+                                  {(isAdmin || ((order as any).orderSource === "Own Stock" && canModifyDocs)) && (
+                                    <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => document.getElementById("lovol-invoice-upload")?.click()} title="Re-upload">
+                                      <RefreshCw className="w-4 h-4" />
+                                    </Button>
+                                  )}
+                                </>
+                              ) : (
+                                (isAdmin || ((order as any).orderSource === "Own Stock" && canModifyDocs)) && (
+                                  <Button variant="outline" size="sm" onClick={() => document.getElementById("lovol-invoice-upload")?.click()} disabled={!!uploadingDoc || order.currentStage !== "Invoice Generation"}>
+                                    {uploadingDoc === "LovolInvoice" ? "Uploading..." : "Upload Invoice"}
+                                  </Button>
+                                )
+                              )}
                             </div>
-                          </div>
-                          <div className="flex gap-2">
-                            {(order as any).documents?.lovolInvoice?.url ? (
-                              <>
-                                <Button variant="outline" size="sm" onClick={() => setViewingDoc({ url: (order as any).documents.lovolInvoice.url, title: "Lovol Invoice" })} title="View">
-                                  <Eye className="w-4 h-4" />
-                                </Button>
-                                <a href={(order as any).documents.lovolInvoice.url} download={`Lovol_Invoice_${order.orderNumber}`} target="_blank" rel="noreferrer">
-                                  <Button variant="outline" size="sm" className="text-blue-600 border-blue-200" title="Download">
-                                    <Download className="w-4 h-4" />
-                                  </Button>
-                                </a>
-                                {isAdmin && (
-                                  <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700" onClick={() => document.getElementById("lovol-invoice-upload")?.click()} title="Re-upload">
-                                    <RefreshCw className="w-4 h-4" />
-                                  </Button>
-                                )}
-                              </>
-                            ) : (
-                              isAdmin && (
-                                <Button variant="outline" size="sm" onClick={() => document.getElementById("lovol-invoice-upload")?.click()} disabled={!!uploadingDoc || order.currentStage !== "Invoice Generation"}>
-                                  {uploadingDoc === "LovolInvoice" ? "Uploading..." : "Upload Invoice"}
-                                </Button>
-                              )
-                            )}
                           </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Dealer Invoice */}
                       <div className={`border rounded-lg p-4 ${(order as any).documents?.dealerInvoice?.url ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
@@ -856,7 +910,12 @@ export function OrderDetail() {
                               </>
                             ) : (
                               canModifyDocs && (
-                                <Button variant="outline" size="sm" onClick={() => document.getElementById("dealer-invoice-upload")?.click()} disabled={!!uploadingDoc || !(order as any).documents?.lovolInvoice?.url}>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => document.getElementById("dealer-invoice-upload")?.click()}
+                                  disabled={!!uploadingDoc || ((order as any).orderSource !== "Own Stock" && !(order as any).documents?.lovolInvoice?.url)}
+                                >
                                   {uploadingDoc === "DealerInvoice" ? "Uploading..." : "Upload Invoice"}
                                 </Button>
                               )
@@ -970,10 +1029,14 @@ export function OrderDetail() {
                     accept="image/*,application/pdf"
                     onChange={(e) => {
                       if (e.target.files?.[0]) {
-                        setPendingFile(e.target.files[0]);
-                        setIsNamingDialogOpen(true);
+                        const file = e.target.files[0];
+                        if (validateFileSize(file)) {
+                          setPendingFile(file);
+                          setIsNamingDialogOpen(true);
+                        } else {
+                          e.target.value = "";
+                        }
                       }
-                      e.target.value = ""; // Clear for future pick
                     }}
                   />
                   <input
@@ -983,10 +1046,15 @@ export function OrderDetail() {
                     accept="image/*,application/pdf"
                     onChange={async (e) => {
                       if (e.target.files?.[0] && id) {
+                        const file = e.target.files[0];
+                        if (!validateFileSize(file)) {
+                          e.target.value = "";
+                          return;
+                        }
                         try {
                           setIsProcessing(true);
                           const currentName = reuploadNameRef.current;
-                          const updatedOrder = await uploadAdditionalDocument(id, e.target.files[0], currentName);
+                          const updatedOrder = await uploadAdditionalDocument(id, file, currentName);
                           setOrder(updatedOrder);
                           toast.success("Document Updated Successfully");
                           setIsReuploading(false);
@@ -1017,35 +1085,37 @@ export function OrderDetail() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Dispatch Details */}
-                  <div className={`border rounded-xl p-5 ${order.deliveryDetails?.transportName ? 'bg-white border-blue-100 shadow-sm' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${order.deliveryDetails?.transportName ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-400'}`}>
-                        <Truck className="w-5 h-5" />
+                  {/* Dispatch Details - Hidden for Own Stock */}
+                  {(order as any).orderSource !== "Own Stock" && (
+                    <div className={`border rounded-xl p-5 ${order.deliveryDetails?.transportName ? 'bg-white border-blue-100 shadow-sm' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${order.deliveryDetails?.transportName ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-400'}`}>
+                          <Truck className="w-5 h-5" />
+                        </div>
+                        <h4 className="font-semibold text-gray-900">Dispatch Details</h4>
                       </div>
-                      <h4 className="font-semibold text-gray-900">Dispatch Details</h4>
+                      {order.deliveryDetails?.transportName ? (
+                        <div className="space-y-3 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Transport:</span>
+                            <span className="font-medium text-gray-900">{order.deliveryDetails.transportName}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Tracking ID:</span>
+                            <span className="font-medium text-blue-600 select-all">{order.deliveryDetails.trackingId}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Est. Arrival:</span>
+                            <span className="font-medium text-gray-900">
+                              {order.deliveryDetails.estimatedDeliveryDate ? new Date(order.deliveryDetails.estimatedDeliveryDate).toLocaleDateString() : "N/A"}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400 italic">Awaiting dispatch info...</p>
+                      )}
                     </div>
-                    {order.deliveryDetails?.transportName ? (
-                      <div className="space-y-3 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Transport:</span>
-                          <span className="font-medium text-gray-900">{order.deliveryDetails.transportName}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Tracking ID:</span>
-                          <span className="font-medium text-blue-600 select-all">{order.deliveryDetails.trackingId}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Est. Arrival:</span>
-                          <span className="font-medium text-gray-900">
-                            {order.deliveryDetails.estimatedDeliveryDate ? new Date(order.deliveryDetails.estimatedDeliveryDate).toLocaleDateString() : "N/A"}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-400 italic">Awaiting dispatch info...</p>
-                    )}
-                  </div>
+                  )}
 
                   {/* Installation Milestone */}
                   <div className={`border rounded-xl p-5 ${orderStages.findIndex(s => s.name === order.currentStage) > orderStages.findIndex(s => s.name === "Installation") || order.currentStage === "Order Completed" ? 'bg-white border-green-100 shadow-sm' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
@@ -1090,6 +1160,10 @@ export function OrderDetail() {
                           <div className="flex justify-between border-b pb-2">
                             <span className="text-gray-500">Duration:</span>
                             <span className="font-medium text-gray-900">{order.warrantyDetails.warrantyMonths} Months</span>
+                          </div>
+                          <div className="flex justify-between border-b pb-2">
+                            <span className="text-gray-500">Maintenance:</span>
+                            <span className="font-medium text-gray-900">{order.warrantyDetails.maintenanceService || "None"}</span>
                           </div>
                         </div>
                         <div className="space-y-3">
@@ -1150,8 +1224,8 @@ export function OrderDetail() {
                 {isSuperAdmin ? "Admin Actions" : "Actions"}
               </h3>
               <div className="space-y-2">
-                {/* === SUPER ADMIN OR DEALER: Approve Payment === */}
-                {(isSuperAdmin || isDealer) && order.currentStage === "Payment Verification" && (
+                {/* === SUPER ADMIN, CREATOR, OR DISTRIBUTOR: Approve Payment === */}
+                {(isSuperAdmin || canModifyDocs || isDistributor) && order.currentStage === "Payment Verification" && (
                   <Button
                     className="w-full justify-start bg-green-600 hover:bg-green-700"
                     onClick={handleApprove}
@@ -1162,8 +1236,8 @@ export function OrderDetail() {
                   </Button>
                 )}
 
-                {/* === SUPER ADMIN OR DEALER: Approve Order === */}
-                {(isSuperAdmin || isDealer) && order.currentStage === "Order Approval" && (
+                {/* === SUPER ADMIN, CREATOR, OR DISTRIBUTOR: Approve Order === */}
+                {(isSuperAdmin || (order.orderSource === "Own Stock" && canModifyDocs) || isDistributor) && order.currentStage === "Order Approval" && (
                   <Button
                     className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={handleFinalApprove}
@@ -1174,40 +1248,16 @@ export function OrderDetail() {
                   </Button>
                 )}
 
-                {/* === SUPER ADMIN OR DEALER (Own Stock): Delivery Actions === */}
-                {(isSuperAdmin || (isDealer && order.orderSource === "Own Stock")) && order.currentStage === "Delivery" && order.deliveryStatus !== "Dispatched" && (
-                  <div className="space-y-3 pt-3 border-t">
-                    <h4 className="text-sm font-medium text-gray-900">Dispatch Details</h4>
-                    <div className="space-y-2">
-                      <input
-                        type="text"
-                        placeholder="Courier / Transport Name"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                        value={transportName}
-                        onChange={(e) => setTransportName(e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Tracking ID"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                        value={trackingId}
-                        onChange={(e) => setTrackingId(e.target.value)}
-                      />
-                      <input
-                        type="date"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                        value={estimatedDeliveryDate}
-                        onChange={(e) => setEstimatedDeliveryDate(e.target.value)}
-                      />
-                    </div>
-                    <Button
-                      className="w-full justify-start mt-2"
-                      onClick={handleUpdateDelivery}
-                      disabled={isProcessing || !transportName || !trackingId || !estimatedDeliveryDate}
-                    >
-                      Mark as Dispatched
-                    </Button>
-                  </div>
+                {/* === SUPER ADMIN OR CREATOR: Delivery Actions - Simplified to Mark as Delivered === */}
+                {(order as any).orderSource !== "Own Stock" && (isSuperAdmin || canModifyDocs) && order.currentStage === "Delivery" && order.deliveryStatus !== "Delivered" && (
+                  <Button
+                    className="w-full justify-start mt-2 bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={handleConfirmReceipt}
+                    disabled={isProcessing}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    {isProcessing ? "Processing..." : "Mark as Delivered"}
+                  </Button>
                 )}
 
                 {order.deliveryDetails && order.deliveryDetails.transportName && (
@@ -1315,13 +1365,16 @@ export function OrderDetail() {
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500 mb-1 block">Maint. (Months)</label>
-                          <input
-                            type="number"
+                          <label className="text-xs text-gray-500 mb-1 block">Maintenance Service</label>
+                          <select
                             className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                            value={maintenanceMonths}
-                            onChange={(e) => setMaintenanceMonths(Number(e.target.value))}
-                          />
+                            value={maintenanceService}
+                            onChange={(e) => setMaintenanceService(e.target.value)}
+                          >
+                            <option value="None">Select Service</option>
+                            <option value="500h">500 Hours</option>
+                            <option value="1000h">1000 Hours</option>
+                          </select>
                         </div>
                       </div>
                       <div>
@@ -1331,7 +1384,14 @@ export function OrderDetail() {
                           accept="image/*,application/pdf"
                           className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium text-gray-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                           onChange={(e) => {
-                            if (e.target.files) setWarrantyDocument(e.target.files[0]);
+                            if (e.target.files?.[0]) {
+                              const file = e.target.files[0];
+                              if (validateFileSize(file)) {
+                                setWarrantyDocument(file);
+                              } else {
+                                e.target.value = "";
+                              }
+                            }
                           }}
                         />
                       </div>
@@ -1346,30 +1406,32 @@ export function OrderDetail() {
                   </div>
                 )}
 
-                {/* === SUPER ADMIN ONLY: Request Documents === */}
-                {isSuperAdmin && (
+                {/* === SUPER ADMIN ONLY: Request Documents (Hidden after Invoice Generation) === */}
+                {isSuperAdmin && currentStageIndex < STAGE_NAMES.indexOf("Invoice Generation") && (
                   <Button className="w-full justify-start" variant="outline" onClick={() => setIsRequestDialogOpen(true)} disabled={isProcessing}>
                     {isProcessing ? "Processing..." : "Request Documents"}
                   </Button>
                 )}
 
-                {/* === SUPER ADMIN ONLY: Update Status === */}
-                {isSuperAdmin && (
-                  <Button className="w-full justify-start" variant="outline" onClick={() => setIsStatusChangeDialogOpen(true)}>
-                    Update Status
-                  </Button>
-                )}
+                {/* === SUPER ADMIN ONLY: Update Status REMOVED === */}
 
-                {/* CREATOR OR ADMIN: Cancel Order */}
-                {canModifyDocs && (
-                  <Button
-                    className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
-                    variant="outline"
-                    onClick={handleCancelOrder}
-                    disabled={isProcessing || order.currentStage === "Cancelled"}
-                  >
-                    {isProcessing ? "Processing..." : "Cancel Order"}
-                  </Button>
+                {/* Order Complete or Cancel (Cancel hidden after Delivered/Installation) */}
+                {order.currentStage === "Closure" ? (
+                  <div className="w-full flex items-center gap-2 px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-green-700 font-semibold text-sm">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    Order is Complete
+                  </div>
+                ) : (
+                  canModifyDocs && order.currentStage !== "Cancelled" && currentStageIndex < STAGE_NAMES.indexOf("Installation") && (
+                    <Button
+                      className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+                      variant="outline"
+                      onClick={() => setIsCancelDialogOpen(true)}
+                      disabled={isProcessing}
+                    >
+                      {isProcessing ? "Processing..." : "Cancel Order"}
+                    </Button>
+                  )
                 )}
               </div>
             </Card>
@@ -1583,6 +1645,59 @@ export function OrderDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Cancel Order Confirmation */}
+      <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently cancel the order and update the inventory records.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Don't Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={(e) => {
+                e.preventDefault();
+                handleCancelOrder();
+              }}
+              disabled={isProcessing}
+            >
+              {isProcessing ? "Processing..." : "Yes, Cancel Order"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Stage Jump Confirmation */}
+      <AlertDialog open={isStageJumpDialogOpen} onOpenChange={setIsStageJumpDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Jump to different stage?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to jump the order status to <span className="font-bold text-blue-600">{pendingStageJump?.name}</span>?
+              This will bypass the current workflow sequence.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingStageJump) {
+                  handleStageJump(pendingStageJump.name, pendingStageJump.progress);
+                }
+              }}
+              disabled={isProcessing}
+            >
+              {isProcessing ? "Updating..." : "Confirm Jump"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

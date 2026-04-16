@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { useProductDetail, useWarehouses, useUpdateProduct, useDeleteProduct } from "../hooks/useProducts";
+import { validateFileSize } from "../utils/file";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -103,6 +104,10 @@ export function ProductDetail() {
   const handleNewImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      if (!validateFileSize(file)) {
+        e.target.value = "";
+        return;
+      }
       setNewImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => setNewImagePreview(reader.result as string);
@@ -317,46 +322,13 @@ export function ProductDetail() {
                   <p className="text-lg font-bold text-gray-900">₹{(product.price / 100000).toFixed(2)}L</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3">
-                <Package className="w-5 h-5 text-gray-400 mt-0.5" />
-                <div>
-                  <p className="text-sm text-gray-600">Stock Available</p>
-                  <p className="text-lg font-bold text-gray-900">{product.stockAvailable} units</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
-                <div>
-                  <p className="text-sm text-gray-600">Warranty Period</p>
-                  <p className="text-sm font-medium text-gray-900">{product.warrantyPeriod || "Not specified"}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <Wrench className="w-5 h-5 text-gray-400 mt-0.5" />
-                <div>
-                  <p className="text-sm text-gray-600">Service Schedule</p>
-                  <p className="text-sm font-medium text-gray-900">{product.serviceSchedule || "Not specified"}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
-                <div>
-                  <p className="text-sm text-gray-600">Warehouse</p>
-                  <p className="text-sm font-medium text-gray-900">{product.warehouseId?.name || "Unassigned"}</p>
-                </div>
-              </div>
             </div>
           </Card>
+
 
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
             <div className="space-y-2">
-              <Button className="w-full justify-start bg-blue-600 hover:bg-blue-700">
-                Create Order
-              </Button>
-              <Button className="w-full justify-start" variant="outline">
-                Update Stock
-              </Button>
               <Button
                 className="w-full justify-start"
                 variant="outline"
@@ -364,9 +336,6 @@ export function ProductDetail() {
               >
                 <Pencil className="w-4 h-4 mr-2" />
                 Edit Product
-              </Button>
-              <Button className="w-full justify-start" variant="outline">
-                View Inventory
               </Button>
               <Button
                 className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -379,23 +348,7 @@ export function ProductDetail() {
             </div>
           </Card>
 
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Stock Status</h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Factory</span>
-                <span className="text-sm font-medium text-green-600">{Math.floor(product.stockAvailable * 0.6)} units</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Regional Warehouses</span>
-                <span className="text-sm font-medium text-green-600">{Math.floor(product.stockAvailable * 0.3)} units</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Dealer Warehouses</span>
-                <span className="text-sm font-medium text-yellow-600">{Math.floor(product.stockAvailable * 0.1)} units</span>
-              </div>
-            </div>
-          </Card>
+
         </div>
       </div>
 
@@ -463,28 +416,10 @@ export function ProductDetail() {
                   <Input type="number" required value={editForm.price} onChange={e => setEditForm({ ...editForm, price: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Stock *</Label>
-                  <Input type="number" required value={editForm.stockAvailable} onChange={e => setEditForm({ ...editForm, stockAvailable: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Warranty Period</Label>
-                  <Input value={editForm.warrantyPeriod} onChange={e => setEditForm({ ...editForm, warrantyPeriod: e.target.value })} placeholder="e.g. 2 Years" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Warehouse *</Label>
-                  <Select value={editForm.warehouseId} onValueChange={(val) => setEditForm({ ...editForm, warehouseId: val })}>
-                    <SelectTrigger><SelectValue placeholder="Select Warehouse" /></SelectTrigger>
-                    <SelectContent>
-                      {warehouses.map((w: any) => (
-                        <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
                   <Label>Reorder Alert Level</Label>
                   <Input type="number" value={editForm.reorderLevel} onChange={e => setEditForm({ ...editForm, reorderLevel: e.target.value })} placeholder="5" />
                 </div>
+
               </div>
 
               <div className="space-y-2">

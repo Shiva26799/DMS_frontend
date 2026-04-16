@@ -4,12 +4,18 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { useAuth } from "../context/AuthContext";
 
-export const useLeads = () => {
+export const useLeads = (page?: number, limit?: number) => {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ["leads", user?.id],
+    queryKey: ["leads", user?.id, page, limit],
     queryFn: async () => {
-      const res = await apiClient.get("/leads");
+      const res = await apiClient.get("/leads", {
+        params: { page, limit }
+      });
+      // Unified format: { leads: Lead[], pagination: any }
+      if (Array.isArray(res.data)) {
+        return { leads: res.data, pagination: null };
+      }
       return res.data;
     },
   });
@@ -84,8 +90,8 @@ export const useUpdateLeadStatus = () => {
 export const useAssignLeadDealer = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, dealerId, dealerName }: { id: string; dealerId: string; dealerName: string }) => {
-      const res = await apiClient.put(`/leads/${id}/assign`, { dealerId, dealerName });
+    mutationFn: async ({ id, dealerId, type }: { id: string; dealerId: string; type: string }) => {
+      const res = await apiClient.put(`/leads/${id}/assign`, { dealerId, type });
       return res.data;
     },
     onSuccess: (_, variables) => {
@@ -155,8 +161,8 @@ export const useMarkFollowUpCompleted = () => {
 export const useCreateOrder = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ leadId, warehouseId, orderSource }: { leadId: string, warehouseId?: string, orderSource?: string }) => {
-      const res = await apiClient.post("/orders/from-lead", { leadId, warehouseId, orderSource });
+    mutationFn: async ({ leadId, dealerId, warehouseId, orderSource, products, buyerType, customerName }: { leadId?: string, dealerId?: string, warehouseId?: string, orderSource?: string, products?: any[], buyerType?: string, customerName?: string }) => {
+      const res = await apiClient.post("/orders", { leadId, dealerId, warehouseId, orderSource, products, buyerType, customerName });
       return res.data;
     },
     onSuccess: () => {
@@ -186,5 +192,21 @@ export const useDeleteLead = () => {
     onError: (error: any) => {
       toast.error(error.response?.data?.message || "Failed to delete lead");
     },
+  });
+};
+
+/**
+ * Search leads/customers by name for typeahead
+ */
+export const useSearchLeads = (query: string) => {
+  return useQuery({
+    queryKey: ["leads", "search", query],
+    queryFn: async () => {
+      if (!query || query.length < 1) return [];
+      const res = await apiClient.get("/leads/search", { params: { q: query } });
+      return res.data;
+    },
+    enabled: query.length >= 1,
+    staleTime: 30000,
   });
 };

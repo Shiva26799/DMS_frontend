@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router";
 import { Plus, Filter, Search, AlertTriangle } from "lucide-react";
+import Pagination from "../components/Pagination";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { StatusBadge } from "../components/StatusBadge";
@@ -31,10 +32,22 @@ import {
   DialogFooter,
 } from "../components/ui/dialog";
 import { useAuth } from "../context/AuthContext";
+import { validateFileSize } from "../utils/file";
+import { useRBAC } from "../hooks/useRBAC";
 
 export function DealerManagement() {
   const { user, isAdmin, isDistributor } = useAuth();
-  const { dealers, addDealer, isLoading } = useDealers();
+  const { checkPermission } = useRBAC();
+  
+  const canCreate = checkPermission("dealers", "create");
+  const canUpdate = checkPermission("dealers", "update");
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const { dealers, pagination, addDealer, isLoading, refreshDealers } = useDealers();
+
+  useEffect(() => {
+    refreshDealers(page, limit);
+  }, [page, limit, refreshDealers]);
   const { data: distributors } = useDistributors();
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterRegion, setFilterRegion] = useState<string>("all");
@@ -60,16 +73,46 @@ export function DealerManagement() {
   const [kycFiles, setKycFiles] = useState<{ [key: string]: File | null }>({});
 
   const handleFileChange = (field: string, file: File | null) => {
+    if (file && !validateFileSize(file)) {
+      // Clear the specific file input
+      const input = document.getElementById(`file-${field}`) as HTMLInputElement;
+      if (input) input.value = "";
+      return;
+    }
     setKycFiles(prev => ({ ...prev, [field]: file }));
   };
 
+  // Returns required KYC docs based on company type
   const getRequiredDocs = () => {
-    return [
-      { label: "PAN Card", field: "pan" },
-      { label: "Aadhaar Card", field: "aadhaar" },
-      { label: "GST Certificate", field: "gst" },
-      { label: "Bank Proof", field: "bankProof" }
-    ];
+    switch (formData.companyType) {
+      case "Proprietorship":
+        return [
+          { label: "PAN Card (Owner)", field: "pan" },
+          { label: "Aadhaar Card (Owner)", field: "aadhaar" },
+          { label: "GST Certificate (or Shop License if no GST)", field: "gst" },
+          { label: "Cancelled Cheque", field: "bankProof" }
+        ];
+      case "LLP":
+        return [
+          { label: "PAN Card of LLP", field: "pan" },
+          { label: "Certificate of Incorporation", field: "incorporation" },
+          { label: "Aadhaar/PAN of Authorized Signatory", field: "signatoryId" },
+          { label: "Cancelled Cheque (LLP account)", field: "bankProof" },
+          { label: "GST Certificate", field: "gst" }
+        ];
+      case "Pvt Ltd":
+        // Treat Pvt Ltd same as LLP for now (can be customized)
+        return [
+          { label: "PAN Card of Company", field: "pan" },
+          { label: "Certificate of Incorporation", field: "incorporation" },
+          { label: "Aadhaar/PAN of Authorized Signatory", field: "signatoryId" },
+          { label: "Cancelled Cheque (Company account)", field: "bankProof" },
+          { label: "GST Certificate", field: "gst" }
+        ];
+      // Partnership Firm removed as per requirements
+      default:
+        return [];
+    }
   };
 
   const handleAddDealer = async () => {
@@ -95,7 +138,7 @@ export function DealerManagement() {
       data.append("address", formData.city || "N/A");
       data.append("code", formData.code);
       data.append("region", formData.region || "Other");
-      data.append("creditLimit", String((Number(formData.creditLimit) || 0) * 100000));
+      data.append("creditLimit", String(Number(formData.creditLimit) || 0));
       data.append("companyType", formData.companyType);
 
       const dId = isAdmin ? formData.distributorId : (isDistributor ? user?.id : "");
@@ -167,229 +210,247 @@ export function DealerManagement() {
             Manage dealer network and performance
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Dealer
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Add New Dealer</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Dealer Name</Label>
-                <Input
-                  id="name"
-                  placeholder="Enter dealer name"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="city">City</Label>
-                <Input
-                  id="city"
-                  placeholder="Enter city"
-                  value={formData.city}
-                  onChange={(e) =>
-                    setFormData({ ...formData, city: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="code">Code</Label>
-                <Input
-                  id="code"
-                  placeholder="Enter dealer code"
-                  value={formData.code}
-                  onChange={(e) =>
-                    setFormData({ ...formData, code: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="region">Region</Label>
-                <Select
-                  value={formData.region}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, region: value })
-                  }
-                >
-                  <SelectTrigger id="region">
-                    <SelectValue placeholder="Select region" />
-                  </SelectTrigger>
-                  {/* <SelectContent>
-                    <SelectItem value="Punjab">Punjab</SelectItem>
-                    <SelectItem value="Haryana">Haryana</SelectItem>
-                    <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
-                    <SelectItem value="Andhra Pradesh">Andhra Pradesh</SelectItem>
-                    <SelectItem value="Maharashtra">Maharashtra</SelectItem>
-                  </SelectContent> */}
-
-                  <SelectContent>
-                    {regions.map((region) => (
-                      <SelectItem key={region} value={region}>
-                        {region}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  placeholder="+91 98765 00000"
-                  value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="contact@example.com"
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="joinedDate">Joined Date</Label>
-                <Input
-                  id="joinedDate"
-                  type="date"
-                  value={formData.joinedDate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, joinedDate: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="creditLimit">Credit Limit (in Lakhs)</Label>
-                <Input
-                  id="creditLimit"
-                  type="number"
-                  placeholder="e.g. 50 for 50L"
-                  value={formData.creditLimit}
-                  onChange={(e) =>
-                    setFormData({ ...formData, creditLimit: e.target.value })
-                  }
-                />
-              </div>
-              {isAdmin && (
+        {canCreate && (
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-blue-600 hover:bg-blue-700">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Dealer
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Add New Dealer</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto pr-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="distributorId">Distributor</Label>
+                  <Label htmlFor="name">Dealer Name</Label>
+                  <Input
+                    id="name"
+                    placeholder="e.g. Lovol Punjab Motors"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input
+                    id="city"
+                    placeholder="e.g. Ludhiana"
+                    value={formData.city}
+                    onChange={(e) =>
+                      setFormData({ ...formData, city: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="code">Code</Label>
+                  <Input
+                    id="code"
+                    placeholder="e.g. DL-LDH-001"
+                    value={formData.code}
+                    onChange={(e) =>
+                      setFormData({ ...formData, code: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="region">Region</Label>
                   <Select
-                    value={formData.distributorId}
+                    value={formData.region}
                     onValueChange={(value) =>
-                      setFormData({ ...formData, distributorId: value })
+                      setFormData({ ...formData, region: value })
                     }
                   >
-                    <SelectTrigger id="distributorId">
-                      <SelectValue placeholder="Select distributor" />
+                    <SelectTrigger id="region">
+                      <SelectValue placeholder="Select region" />
                     </SelectTrigger>
+                    {/* <SelectContent>
+                      <SelectItem value="Punjab">Punjab</SelectItem>
+                      <SelectItem value="Haryana">Haryana</SelectItem>
+                      <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
+                      <SelectItem value="Andhra Pradesh">Andhra Pradesh</SelectItem>
+                      <SelectItem value="Maharashtra">Maharashtra</SelectItem>
+                    </SelectContent> */}
+  
                     <SelectContent>
-                      {distributors?.map((dist: any) => (
-                        <SelectItem key={dist._id} value={dist._id}>
-                          {dist.name}
+                      {regions.map((region) => (
+                        <SelectItem key={region} value={region}>
+                          {region}
                         </SelectItem>
                       ))}
                     </SelectContent>
+  
                   </Select>
                 </div>
-              )}
-
-              <div className="grid gap-2">
-                <Label htmlFor="companyType">Company Type</Label>
-                <Select
-                  value={formData.companyType}
-                  onValueChange={(value: any) => {
-                    setFormData({ ...formData, companyType: value });
-                    setKycFiles({}); // Reset files when type changes
-                  }}
-                >
-                  <SelectTrigger id="companyType">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="LLP">LLP</SelectItem>
-                    <SelectItem value="Pvt Ltd">Pvt Ltd</SelectItem>
-                    <SelectItem value="Proprietorship">Proprietorship</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <p className="text-sm font-semibold text-gray-700">KYC Documents</p>
-                <div className="grid gap-4">
-                  {getRequiredDocs().map((doc) => (
-                    <div key={doc.field} className="space-y-1.5">
-                      <Label className="text-xs text-gray-500">{doc.label} *</Label>
-                      <div className="flex items-center gap-2">
-                        <div className="relative flex-1">
-                          <Input
-                            type="file"
-                            className="hidden"
-                            id={`file-${doc.field}`}
-                            accept=".pdf,image/*"
-                            onChange={(e) => handleFileChange(doc.field, e.target.files?.[0] || null)}
-                          />
-                          <label
-                            htmlFor={`file-${doc.field}`}
-                            className={`flex items-center justify-between w-full px-3 py-2 border rounded-md cursor-pointer transition-all ${kycFiles[doc.field] ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200 hover:border-gray-300"
-                              }`}
-                          >
-                            <div className="flex items-center gap-2 overflow-hidden">
-                              {kycFiles[doc.field] ? (
-                                <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-                              ) : (
-                                <Upload className="w-4 h-4 text-gray-400 shrink-0" />
-                              )}
-                              <span className={`text-sm truncate ${kycFiles[doc.field] ? "text-blue-700 font-medium" : "text-gray-500"}`}>
-                                {kycFiles[doc.field]?.name || `Upload ${doc.label}`}
-                              </span>
-                            </div>
-                          </label>
+                <div className="grid gap-2">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input
+                    id="phone"
+                    placeholder="e.g. 9876543210"
+                    value={formData.phone}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="e.g. dealer.contact@example.com"
+                    value={formData.email}
+                    onChange={(e) =>
+                      setFormData({ ...formData, email: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="joinedDate">Joined Date</Label>
+                  <Input
+                    id="joinedDate"
+                    type="date"
+                    value={formData.joinedDate}
+                    onChange={(e) =>
+                      setFormData({ ...formData, joinedDate: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="creditLimit">Credit Limit</Label>
+                  <Input
+                    id="creditLimit"
+                    type="number"
+                    placeholder="e.g. 5000000 (for 50 Lakhs)"
+                    value={formData.creditLimit}
+                    onChange={(e) =>
+                      setFormData({ ...formData, creditLimit: e.target.value })
+                    }
+                  />
+                  {formData.creditLimit && Number(formData.creditLimit) > 0 && (
+                    <p className="text-[10px] text-blue-600 font-medium italic">
+                      {(() => {
+                        const num = Number(formData.creditLimit);
+                        const fmt = new Intl.NumberFormat('en-IN', {
+                          style: 'currency',
+                          currency: 'INR',
+                          maximumFractionDigits: 0
+                        }).format(num);
+                        let suffix = "";
+                        if (num >= 10000000) suffix = ` (${(num / 10000000).toFixed(2)} Cr)`;
+                        else if (num >= 100000) suffix = ` (${(num / 100000).toFixed(2)} L)`;
+                        return `${fmt}${suffix}`;
+                      })()}
+                    </p>
+                  )}
+                </div>
+                {isAdmin && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="distributorId">Distributor</Label>
+                    <Select
+                      value={formData.distributorId}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, distributorId: value })
+                      }
+                    >
+                      <SelectTrigger id="distributorId">
+                        <SelectValue placeholder="Select distributor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {distributors?.map((dist: any) => (
+                          <SelectItem key={dist._id} value={dist._id}>
+                            {dist.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+  
+                <div className="grid gap-2">
+                  <Label htmlFor="companyType">Company Type</Label>
+                  <Select
+                    value={formData.companyType}
+                    onValueChange={(value: any) => {
+                      setFormData({ ...formData, companyType: value });
+                      setKycFiles({}); // Reset files when type changes
+                    }}
+                  >
+                    <SelectTrigger id="companyType">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LLP">LLP</SelectItem>
+                      <SelectItem value="Pvt Ltd">Pvt Ltd</SelectItem>
+                      <SelectItem value="Proprietorship">Proprietorship</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+  
+                <div className="space-y-3 pt-2">
+                  <p className="text-sm font-semibold text-gray-700">KYC Documents</p>
+                  <div className="grid gap-4">
+                    {getRequiredDocs().map((doc) => (
+                      <div key={doc.field} className="space-y-1.5">
+                        <Label className="text-xs text-gray-500">{doc.label} *</Label>
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <Input
+                              type="file"
+                              className="hidden"
+                              id={`file-${doc.field}`}
+                              accept=".pdf,image/*"
+                              onChange={(e) => handleFileChange(doc.field, e.target.files?.[0] || null)}
+                            />
+                            <label
+                              htmlFor={`file-${doc.field}`}
+                              className={`flex items-center justify-between w-full px-3 py-2 border rounded-md cursor-pointer transition-all ${kycFiles[doc.field] ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200 hover:border-gray-300"
+                                }`}
+                            >
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                {kycFiles[doc.field] ? (
+                                  <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                                ) : (
+                                  <Upload className="w-4 h-4 text-gray-400 shrink-0" />
+                                )}
+                                <span className={`text-sm truncate ${kycFiles[doc.field] ? "text-blue-700 font-medium" : "text-gray-500"}`}>
+                                  {kycFiles[doc.field]?.name || `Upload ${doc.label}`}
+                                </span>
+                              </div>
+                            </label>
+                          </div>
+                          {kycFiles[doc.field] && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-9 w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                              onClick={() => handleFileChange(doc.field, null)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
                         </div>
-                        {kycFiles[doc.field] && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-9 w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                            onClick={() => handleFileChange(doc.field, null)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                className="bg-blue-600 hover:bg-blue-700"
-                onClick={handleAddDealer}
-              >
-                Add Dealer
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={handleAddDealer}
+                >
+                  Add Dealer
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Summary Cards */}

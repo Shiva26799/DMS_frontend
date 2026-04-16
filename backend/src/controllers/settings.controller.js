@@ -90,7 +90,7 @@ export const createUser = async (req, res) => {
         ]);
 
         if (existingUser || existingDealer) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 message: "A user or dealer with this email already exists.",
                 error: "DUPLICATE_EMAIL"
             });
@@ -98,6 +98,12 @@ export const createUser = async (req, res) => {
 
         const pwd = userData.password || "password123";
         const hashedPassword = await bcrypt.hash(pwd, 10);
+        
+        // Mandatory Logo check for Distributors
+        if (userData.role === "Distributor" && !userData.logoUrl) {
+            return res.status(400).json({ message: "Logo is mandatory for Distributor role" });
+        }
+
         const user = new User({ ...userData, password: hashedPassword });
         await user.save();
         res.status(201).json(user);
@@ -121,7 +127,7 @@ export const updateUser = async (req, res) => {
         if (updateData.assignedWarehouses || updateData.dealerViewWarehouses) {
             const allWarehouses = await Warehouse.find({}, '_id');
             const validIds = allWarehouses.map(w => w._id.toString());
-            
+
             if (updateData.assignedWarehouses) {
                 updateData.assignedWarehouses = updateData.assignedWarehouses.filter(id => validIds.includes(id.toString()));
             }
@@ -132,6 +138,12 @@ export const updateUser = async (req, res) => {
 
         const user = await User.findByIdAndUpdate(req.params.id, updateData, { returnDocument: 'after' }).select("-password");
         if (!user) return res.status(404).json({ message: "User not found" });
+
+        // Mandatory Logo check for Distributors
+        if (user.role === "Distributor" && !user.logoUrl) {
+            return res.status(400).json({ message: "Logo is mandatory for Distributor role" });
+        }
+
         res.json(user);
     } catch (error) {
         res.status(400).json({ message: "Failed to update user", error });
@@ -152,6 +164,47 @@ export const deleteUser = async (req, res) => {
         res.json({ message: "User and associated dealer deleted" });
     } catch (error) {
         res.status(400).json({ message: "Failed to delete user", error });
+    }
+};
+
+export const uploadUserLogo = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: "No logo file provided" });
+        }
+
+        const s3Url = req.file.location;
+        const userId = req.params.id;
+
+        const user = await User.findByIdAndUpdate(
+            userId,
+            { logoUrl: s3Url },
+            { returnDocument: 'after' }
+        ).select("-password");
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.json({ message: "User logo uploaded successfully", logoUrl: s3Url, user });
+    } catch (error) {
+        console.error("User logo upload error:", error);
+        res.status(500).json({ message: "Failed to upload user logo" });
+    }
+};
+
+export const uploadGenericImage = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: "No file provided" });
+        }
+        res.json({ 
+            message: "File uploaded successfully", 
+            logoUrl: req.file.location 
+        });
+    } catch (error) {
+        console.error("Generic upload error:", error);
+        res.status(500).json({ message: "Failed to upload image" });
     }
 };
 

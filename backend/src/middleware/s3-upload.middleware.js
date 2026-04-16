@@ -16,6 +16,8 @@ const s3 = new S3Client({
     },
 });
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB limit for all file types
+
 export const uploadLogo = multer({
     storage: multerS3({
         s3: s3,
@@ -30,7 +32,7 @@ export const uploadLogo = multer({
         },
     }),
     limits: {
-        fileSize: 2 * 1024 * 1024, // 2 MB limit
+        fileSize: MAX_FILE_SIZE,
     },
     fileFilter: (req, file, cb) => {
         if (file.mimetype === "image/jpeg" || file.mimetype === "image/png" || file.mimetype === "image/svg+xml") {
@@ -55,7 +57,7 @@ export const uploadProductImage = multer({
         },
     }),
     limits: {
-        fileSize: 5 * 1024 * 1024, // 5 MB limit for product images
+        fileSize: MAX_FILE_SIZE,
     },
     fileFilter: (req, file, cb) => {
         if (file.mimetype === "image/jpeg" || file.mimetype === "image/png" || file.mimetype === "image/webp") {
@@ -81,7 +83,7 @@ export const uploadOrderDocument = multer({
         },
     }),
     limits: {
-        fileSize: 10 * 1024 * 1024, // 10 MB limit for order documents
+        fileSize: MAX_FILE_SIZE,
     },
     fileFilter: (req, file, cb) => {
         const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
@@ -107,7 +109,7 @@ export const uploadWarrantyMedia = multer({
         },
     }),
     limits: {
-        fileSize: 20 * 1024 * 1024, // 20 MB limit for warranty media (videos)
+        fileSize: MAX_FILE_SIZE,
     },
     fileFilter: (req, file, cb) => {
         const allowedTypes = [
@@ -140,7 +142,7 @@ export const uploadDealerKYC = multer({
         },
     }),
     limits: {
-        fileSize: 10 * 1024 * 1024, // 10 MB limit for KYC documents
+        fileSize: MAX_FILE_SIZE,
     },
     fileFilter: (req, file, cb) => {
         const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];

@@ -18,9 +18,20 @@ import {
   DialogDescription,
   DialogFooter,
 } from "../components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 
 import { Skeleton } from "../components/ui/skeleton";
 import { toast } from "sonner";
+import { validateFileSize } from "../utils/file";
 
 export function OrderDetail() {
   const { id } = useParams();
@@ -36,7 +47,6 @@ export function OrderDetail() {
     markOrderAsReceived,
     markInstallationComplete,
     registerWarranty,
-    updateOrderStatus,
     cancelOrder,
     uploadAdditionalDocument,
     deleteAdditionalDocument,
@@ -92,6 +102,9 @@ export function OrderDetail() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [isStatusChangeDialogOpen, setIsStatusChangeDialogOpen] = useState(false);
   const [jumpTargetStage, setJumpTargetStage] = useState<string>("");
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const [isStageJumpDialogOpen, setIsStageJumpDialogOpen] = useState(false);
+  const [pendingStageJump, setPendingStageJump] = useState<{ name: string, progress: number } | null>(null);
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -105,12 +118,12 @@ export function OrderDetail() {
   }, [id, getOrder]);
 
   const dealerFromContext = order ? getDealer(order.dealerId) : null;
-  
+
   // Create a display dealer object using context or order metadata/populated data
   const dealer = useMemo(() => {
     if (dealerFromContext) return dealerFromContext;
     if (!order) return null;
-    
+
     // Fallback: If order.dealerId is populated (an object), use its fields
     if (order.dealerId && typeof order.dealerId === 'object') {
       const d = order.dealerId as any;
@@ -124,7 +137,7 @@ export function OrderDetail() {
         region: d.region || d.state || "N/A"
       };
     }
-    
+
     // Second Fallback: Use order.dealer string and generic labels
     const dId = typeof order.dealerId === 'string' ? order.dealerId : (order.dealerId as any)?._id;
     return {
@@ -140,6 +153,8 @@ export function OrderDetail() {
 
   const handleFileUpload = async (type: "PO" | "Payment" | "LovolInvoice" | "DealerInvoice", file: File) => {
     if (!order || !order.id) return;
+
+    if (!validateFileSize(file)) return;
 
     try {
       setUploadingDoc(type);
@@ -170,7 +185,7 @@ export function OrderDetail() {
       setOrder(updatedOrder);
     } catch (error) {
       console.error("Failed to approve payment:", error);
-      alert("Failed to verify payment. Please try again.");
+      toast.error("Failed to verify payment. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -184,7 +199,7 @@ export function OrderDetail() {
       setOrder(updatedOrder);
     } catch (error) {
       console.error("Failed to approve order:", error);
-      alert("Failed to approve order. Please try again.");
+      toast.error("Failed to approve order. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -193,7 +208,7 @@ export function OrderDetail() {
   const handleUpdateDelivery = async () => {
     if (!order || !order.id) return;
     if (!transportName || !trackingId || !estimatedDeliveryDate) {
-      alert("Please fill in all delivery details");
+      toast.error("Please fill in all delivery details");
       return;
     }
 
@@ -208,7 +223,7 @@ export function OrderDetail() {
     } catch (error: any) {
       console.error("Failed to update delivery:", error);
       const errorMsg = error.response?.data?.message || "Failed to update delivery status. Please try again.";
-      alert(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setIsProcessing(false);
     }
@@ -222,7 +237,7 @@ export function OrderDetail() {
       setOrder(updatedOrder);
     } catch (error) {
       console.error("Failed to confirm receipt:", error);
-      alert("Failed to confirm receipt. Please try again.");
+      toast.error("Failed to confirm receipt. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -236,7 +251,7 @@ export function OrderDetail() {
       setOrder(updatedOrder);
     } catch (error) {
       console.error("Failed to complete installation:", error);
-      alert("Failed to complete installation. Please try again.");
+      toast.error("Failed to complete installation. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -245,7 +260,7 @@ export function OrderDetail() {
   const handleRegisterWarranty = async () => {
     if (!order || !order.id) return;
     if (!machineSerialNumber || !engineNumber || !warrantyStartDate || !warrantyMonths || !maintenanceService || maintenanceService === "None") {
-      alert("All fields except the signed warranty document are mandatory.");
+      toast.error("All mandatory fields are required.");
       return;
     }
     try {
@@ -261,10 +276,10 @@ export function OrderDetail() {
 
       const updatedOrder = await registerWarranty(order.id, formData);
       setOrder(updatedOrder);
-      alert("Warranty successfully registered!");
+      toast.success("Warranty successfully registered!");
     } catch (error) {
       console.error("Failed to register warranty:", error);
-      alert("Failed to register warranty. Please try again.");
+      toast.error("Failed to register warranty. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -272,42 +287,22 @@ export function OrderDetail() {
 
   const handleCancelOrder = async () => {
     if (!order || !order.id) return;
-    if (!window.confirm("Are you sure you want to cancel this order? This action cannot be undone.")) {
-      return;
-    }
 
     try {
       setIsProcessing(true);
       const updatedOrder = await cancelOrder(order.id);
       setOrder(updatedOrder);
-      alert("Order has been cancelled.");
+      toast.success("Order has been cancelled.");
+      setIsCancelDialogOpen(false);
     } catch (error: any) {
       console.error("Failed to cancel order:", error);
-      alert(error.response?.data?.message || "Failed to cancel order. Please try again.");
+      toast.error(error.response?.data?.message || "Failed to cancel order. Please try again.");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleStageJump = async (stageName: string, progress: number) => {
-    if (!order || !order.id) return;
-    if (order.currentStage === stageName) return;
-
-    if (!window.confirm(`Are you sure you want to jump to stage: ${stageName}?`)) {
-      return;
-    }
-
-    try {
-      setIsProcessing(true);
-      const updatedOrder = await updateOrderStatus(order.id, stageName, progress);
-      setOrder(updatedOrder);
-    } catch (error) {
-      console.error("Failed to jump stage:", error);
-      alert("Failed to update stage. Please try again.");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  // Stage jumping feature has been disabled
 
   const [isReuploading, setIsReuploading] = useState(false);
   const reuploadNameRef = useRef("");
@@ -320,6 +315,8 @@ export function OrderDetail() {
 
   const handleAdditionalUpload = async () => {
     if (!pendingFile || !newDocName || !id) return;
+
+    if (!validateFileSize(pendingFile)) return;
 
     try {
       setIsProcessing(true);
@@ -373,10 +370,8 @@ export function OrderDetail() {
     }
   };
 
-  // RBAC: readOnly comes from the backend for distributors viewing orders they didn't create
-  const isReadOnly = (order as any)?.readOnly === true;
   // The creator or Super Admin can modify docs and perform lifecycle actions
-  const canModifyDocs = isSuperAdmin || !isReadOnly;
+  const canModifyDocs = isSuperAdmin || !isDealer || (isDealer && order.createdBy === user?.id);
 
   const STAGE_NAMES = useMemo(() => {
     if (order?.orderSource === "Own Stock") {
@@ -465,20 +460,6 @@ export function OrderDetail() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Read-Only Banner for Distributors */}
-      {isReadOnly && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-3">
-          <Eye className="w-5 h-5 text-amber-600 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-amber-800">Read-Only View</p>
-            <p className="text-xs text-amber-600">
-              {isDistributor 
-                ? "You have view-only access, but you can approve payments and orders for your dealers."
-                : "You have view-only access to this order. Only the order creator or Super Admin can perform actions."}
-            </p>
-          </div>
-        </div>
-      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -572,8 +553,7 @@ export function OrderDetail() {
                 <div key={index} className="text-center relative">
                   <div className="bg-white inline-block">
                     <div
-                      onClick={() => isSuperAdmin && handleStageJump(stage.name, stage.progress)}
-                      className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center transition-all duration-300 ${isSuperAdmin ? 'cursor-pointer hover:scale-110' : ''} ${stage.status === "completed"
+                      className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center transition-all duration-300 ${stage.status === "completed"
                         ? "bg-green-100 text-green-600"
                         : stage.status === "current"
                           ? "bg-blue-100 shadow-md ring-4 ring-blue-50 text-blue-600"
@@ -713,7 +693,7 @@ export function OrderDetail() {
                     {order.leadId && (
                       <div className="space-y-1">
                         <p className="text-gray-500 font-medium">Linked Record</p>
-                        <Link 
+                        <Link
                           to={`/leads/${order.leadId?._id || order.leadId}`}
                           className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1.5"
                         >
@@ -928,14 +908,14 @@ export function OrderDetail() {
                                   </Button>
                                 )}
                               </>
-                             ) : (
-                               canModifyDocs && (
-                                 <Button 
-                                   variant="outline" 
-                                   size="sm" 
-                                   onClick={() => document.getElementById("dealer-invoice-upload")?.click()} 
-                                   disabled={!!uploadingDoc || ((order as any).orderSource !== "Own Stock" && !(order as any).documents?.lovolInvoice?.url)}
-                                 >
+                            ) : (
+                              canModifyDocs && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => document.getElementById("dealer-invoice-upload")?.click()}
+                                  disabled={!!uploadingDoc || ((order as any).orderSource !== "Own Stock" && !(order as any).documents?.lovolInvoice?.url)}
+                                >
                                   {uploadingDoc === "DealerInvoice" ? "Uploading..." : "Upload Invoice"}
                                 </Button>
                               )
@@ -1049,10 +1029,14 @@ export function OrderDetail() {
                     accept="image/*,application/pdf"
                     onChange={(e) => {
                       if (e.target.files?.[0]) {
-                        setPendingFile(e.target.files[0]);
-                        setIsNamingDialogOpen(true);
+                        const file = e.target.files[0];
+                        if (validateFileSize(file)) {
+                          setPendingFile(file);
+                          setIsNamingDialogOpen(true);
+                        } else {
+                          e.target.value = "";
+                        }
                       }
-                      e.target.value = ""; // Clear for future pick
                     }}
                   />
                   <input
@@ -1062,10 +1046,15 @@ export function OrderDetail() {
                     accept="image/*,application/pdf"
                     onChange={async (e) => {
                       if (e.target.files?.[0] && id) {
+                        const file = e.target.files[0];
+                        if (!validateFileSize(file)) {
+                          e.target.value = "";
+                          return;
+                        }
                         try {
                           setIsProcessing(true);
                           const currentName = reuploadNameRef.current;
-                          const updatedOrder = await uploadAdditionalDocument(id, e.target.files[0], currentName);
+                          const updatedOrder = await uploadAdditionalDocument(id, file, currentName);
                           setOrder(updatedOrder);
                           toast.success("Document Updated Successfully");
                           setIsReuploading(false);
@@ -1395,7 +1384,14 @@ export function OrderDetail() {
                           accept="image/*,application/pdf"
                           className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium text-gray-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                           onChange={(e) => {
-                            if (e.target.files) setWarrantyDocument(e.target.files[0]);
+                            if (e.target.files?.[0]) {
+                              const file = e.target.files[0];
+                              if (validateFileSize(file)) {
+                                setWarrantyDocument(file);
+                              } else {
+                                e.target.value = "";
+                              }
+                            }
                           }}
                         />
                       </div>
@@ -1417,12 +1413,7 @@ export function OrderDetail() {
                   </Button>
                 )}
 
-                {/* === SUPER ADMIN ONLY: Update Status === */}
-                {isSuperAdmin && (
-                  <Button className="w-full justify-start" variant="outline" onClick={() => setIsStatusChangeDialogOpen(true)}>
-                    Update Status
-                  </Button>
-                )}
+                {/* === SUPER ADMIN ONLY: Update Status REMOVED === */}
 
                 {/* Order Complete or Cancel (Cancel hidden after Delivered/Installation) */}
                 {order.currentStage === "Closure" ? (
@@ -1435,7 +1426,7 @@ export function OrderDetail() {
                     <Button
                       className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
                       variant="outline"
-                      onClick={handleCancelOrder}
+                      onClick={() => setIsCancelDialogOpen(true)}
                       disabled={isProcessing}
                     >
                       {isProcessing ? "Processing..." : "Cancel Order"}
@@ -1654,6 +1645,59 @@ export function OrderDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Cancel Order Confirmation */}
+      <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently cancel the order and update the inventory records.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Don't Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={(e) => {
+                e.preventDefault();
+                handleCancelOrder();
+              }}
+              disabled={isProcessing}
+            >
+              {isProcessing ? "Processing..." : "Yes, Cancel Order"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Stage Jump Confirmation */}
+      <AlertDialog open={isStageJumpDialogOpen} onOpenChange={setIsStageJumpDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Jump to different stage?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to jump the order status to <span className="font-bold text-blue-600">{pendingStageJump?.name}</span>?
+              This will bypass the current workflow sequence.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingStageJump) {
+                  handleStageJump(pendingStageJump.name, pendingStageJump.progress);
+                }
+              }}
+              disabled={isProcessing}
+            >
+              {isProcessing ? "Updating..." : "Confirm Jump"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

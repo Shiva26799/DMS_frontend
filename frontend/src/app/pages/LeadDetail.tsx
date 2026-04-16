@@ -50,6 +50,7 @@ import {
 import { useAssignees } from "../hooks/useDealers";
 import { useAuth } from "../context/AuthContext";
 import { OrderForm } from "../components/OrderForm";
+import { useRBAC } from "../hooks/useRBAC";
 
 interface ActivityLog {
   _id?: string;
@@ -87,6 +88,7 @@ export function LeadDetail() {
   const navigate = useNavigate();
 
   const { isAdmin, isDistributor, isDealer } = useAuth();
+  const { checkPermission } = useRBAC();
   const { data: lead, isLoading: isLeadLoading } = useLeadDetail(id);
   const { data: assignees = [] } = useAssignees();
 
@@ -311,17 +313,10 @@ export function LeadDetail() {
             <h1 className="text-2xl font-bold text-gray-900">
               {lead.customerName}
             </h1>
-            <div className="flex items-center gap-3 mt-1">
-              <p className="text-sm text-gray-600">{lead.stage === "Customer" ? "Customer ID" : "Lead ID"}: {lead._id.substring(lead._id.length - 6).toUpperCase()}</p>
-              <span className="text-gray-300">•</span>
-              <p className="text-xs text-gray-500">
-                Created {Math.floor((new Date().getTime() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24))} days ago
-              </p>
-            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {(isAdmin || isDistributor || isDealer) && (
+          {checkPermission("leads", "delete") && (
             <Button
               variant="ghost"
               size="sm"
@@ -453,11 +448,11 @@ export function LeadDetail() {
                 </div>
               </div>
               <div>
-                <p className="text-sm text-gray-600 mb-1">Assigned Date</p>
+                <p className="text-sm text-gray-600 mb-1">Created Date</p>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-400" />
                   <p className="text-sm font-medium text-gray-900">
-                    {lead.assignedDate ? new Date(lead.assignedDate).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }) : "—"}
+                    {new Date(lead.createdAt).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' })}
                   </p>
                 </div>
               </div>
@@ -502,8 +497,9 @@ export function LeadDetail() {
                       <p className="text-sm text-gray-900">{lead.notes}</p>
                     </div>
                   )}
+                  <p className="text-sm font-semibold text-gray-900 mb-2">Internal Notes</p>
                   <Textarea
-                    placeholder="Add a new note..."
+                    placeholder="e.g. Customer is looking for a discount on bulk purchase. Prefers communication via WhatsApp."
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                   />
@@ -572,27 +568,31 @@ export function LeadDetail() {
             <div className="space-y-4">
               {!activeAction ? (
                 <div className="space-y-2">
-                  <Button
-                    className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                    disabled={actionLoading}
-                    onClick={() => setIsConvertDialogOpen(true)}
-                  >
-                    {createOrderMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                    Create Order
-                  </Button>
-                  <Button
-                    className="w-full justify-start"
-                    variant="outline"
-                    onClick={() => {
-                      setNewStatus(lead.status);
-                      setActiveAction("status");
-                      setTimeout(() => setIsStatusSelectOpen(true), 100);
-                    }}
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Change Status
-                  </Button>
-                    {(isAdmin || isDistributor) && (
+                  {checkPermission("leads", "convertToOrder") && (
+                    <Button
+                      className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                      disabled={actionLoading}
+                      onClick={() => setIsConvertDialogOpen(true)}
+                    >
+                      {createOrderMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                      Create Order
+                    </Button>
+                  )}
+                  {checkPermission("leads", "updateStatus") && (
+                    <Button
+                      className="w-full justify-start"
+                      variant="outline"
+                      onClick={() => {
+                        setNewStatus(lead.status);
+                        setActiveAction("status");
+                        setTimeout(() => setIsStatusSelectOpen(true), 100);
+                      }}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Change Status
+                    </Button>
+                  )}
+                    {checkPermission("leads", "assignToDealers") && (
                       <Button
                         className="w-full justify-start"
                         variant="outline"
@@ -602,25 +602,29 @@ export function LeadDetail() {
                         Assign Dealer/Distributor
                       </Button>
                     )}
-                  <Button
-                    className="w-full justify-start"
-                    variant="outline"
-                    onClick={() => setActiveAction("followup")}
-                  >
-                    <Calendar className="w-4 h-4 mr-2" />
-                    Schedule Follow-up
-                  </Button>
-                  <Button
-                    className="w-full justify-start"
-                    variant="outline"
-                    onClick={() => {
-                      setNewRating(lead.rating);
-                      setActiveAction("rating" as any);
-                    }}
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Change Rating
-                  </Button>
+                  {checkPermission("leads", "addActivities") && (
+                    <Button
+                      className="w-full justify-start"
+                      variant="outline"
+                      onClick={() => setActiveAction("followup")}
+                    >
+                      <Calendar className="w-4 h-4 mr-2" />
+                      Schedule Follow-up
+                    </Button>
+                  )}
+                  {checkPermission("leads", "edit") && (
+                    <Button
+                      className="w-full justify-start"
+                      variant="outline"
+                      onClick={() => {
+                        setNewRating(lead.rating);
+                        setActiveAction("rating" as any);
+                      }}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Change Rating
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -727,7 +731,7 @@ export function LeadDetail() {
                         <Label htmlFor="follow-up-note">Note</Label>
                         <Textarea
                           id="follow-up-note"
-                          placeholder="e.g. Call to confirm demo"
+                          placeholder="e.g. Call customer to discuss pricing and schedule a product demo..."
                           value={followUpNote}
                           onChange={(e) => setFollowUpNote(e.target.value)}
                           className="bg-white min-h-[80px]"

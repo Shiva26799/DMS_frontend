@@ -30,11 +30,13 @@ export const getMaintenanceRecords = async (req, res) => {
         // Role-based filtering
         const user = req.user;
         if (user.role === "Dealer") {
-            query.dealerId = user.dealerId;
+            const userDealerId = user.dealerId?._id || user.dealerId;
+            query.dealerId = userDealerId;
         } else if (user.role === "Distributor") {
-            const dealers = await Dealer.find({ distributorId: user._id });
+            const userId = user._id?._id || user._id;
+            const dealers = await Dealer.find({ distributorId: userId });
             const dealerIds = dealers.map(d => d._id);
-            query.dealerId = { $in: [...dealerIds, user._id] };
+            query.dealerId = { $in: [...dealerIds, userId] };
         }
 
         // Auto-update overdue records
@@ -110,7 +112,8 @@ export const completeService = async (req, res) => {
         }
 
         const user = req.user;
-        if (user.role === "Distributor" && String(record.dealerId) !== String(user._id)) {
+        const userId = String(user._id?._id || user._id);
+        if (user.role === "Distributor" && String(record.dealerId?._id || record.dealerId) !== userId) {
             return res.status(403).json({ message: "Read-only access: Distributors cannot complete service for their dealers." });
         }
 
@@ -185,17 +188,18 @@ export const scheduleService = async (req, res) => {
 
         // --- RBAC on dealerId ---
         if (user.role === "Dealer") {
-            dealerId = user.dealerId;
+            dealerId = user.dealerId?._id || user.dealerId;
         } else if (user.role === "Distributor") {
-            if (dealerId && dealerId !== String(user._id)) {
+            const userId = String(user._id?._id || user._id);
+            if (dealerId && dealerId !== userId) {
                 // Must be one of their dealers
-                const dealerCheck = await Dealer.findOne({ _id: dealerId, distributorId: user._id });
+                const dealerCheck = await Dealer.findOne({ _id: dealerId, distributorId: user._id?._id || user._id });
                 if (!dealerCheck) {
                     return res.status(403).json({ message: "Access denied: Cannot schedule service for a dealer outside your network." });
                 }
             } else if (!dealerId) {
                 // Default to self for distributor if not provided
-                dealerId = user._id;
+                dealerId = user._id?._id || user._id;
             }
         } else if (user.role === "Super Admin") {
             // Can pass whatever

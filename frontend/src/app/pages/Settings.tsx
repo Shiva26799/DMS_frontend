@@ -52,15 +52,18 @@ import {
   useUsers,
   useAddUser,
   useUpdateUser,
+  useUpdateUserLogo,
   useDeleteUser,
   useSettingsWarehouses,
   useAddWarehouse,
   useUpdateWarehouse,
   useDeleteWarehouse,
   usePermissions,
-  useUpdatePermissions
+  useUpdatePermissions,
+  useUploadGenericImage
 } from "../hooks/useSettings";
 import { useDealers } from "../hooks/useDealers";
+import { validateFileSize } from "../utils/file";
 
 interface User {
   _id: string;
@@ -74,6 +77,7 @@ interface User {
   assignedWarehouses?: string[];
   dealerViewWarehouses?: string[];
   isSubAccount?: boolean;
+  logoUrl?: string;
 }
 
 interface Dealer {
@@ -109,11 +113,13 @@ export function Settings() {
   const updateLogoMutation = useUpdateCompanyLogo();
   const addUserMutation = useAddUser();
   const updateUserMutation = useUpdateUser();
+  const updateUserLogoMutation = useUpdateUserLogo();
   const deleteUserMutation = useDeleteUser();
   const addWarehouseMutation = useAddWarehouse();
   const updateWarehouseMutation = useUpdateWarehouse();
   const deleteWarehouseMutation = useDeleteWarehouse();
   const updatePermissionsMutation = useUpdatePermissions();
+  const uploadGenericImageMutation = useUploadGenericImage();
 
   // Company Information State
   const [companyInfo, setCompanyInfo] = useState({
@@ -150,7 +156,10 @@ export function Settings() {
     password: "",
     assignedWarehouses: [] as string[],
     dealerViewWarehouses: [] as string[],
+    logoUrl: "",
   });
+
+  const [userLogoPreview, setUserLogoPreview] = useState<string | null>(null);
 
   // Warehouse Management State
   // Mapping Dialog State (New)
@@ -239,7 +248,7 @@ export function Settings() {
 
     distributors.forEach(dist => {
       result.push(dist);
-      
+
       if (expandedDistributors.has(dist._id)) {
         const subDealers = others.filter(d => {
           if (d.role !== "Dealer") return false;
@@ -281,6 +290,10 @@ export function Settings() {
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!validateFileSize(file)) {
+        e.target.value = "";
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setLogoPreview(reader.result as string);
@@ -317,7 +330,9 @@ export function Settings() {
         password: "", // Keep password empty when editing
         assignedWarehouses: user.assignedWarehouses || [],
         dealerViewWarehouses: user.dealerViewWarehouses || [],
+        logoUrl: user.logoUrl || "",
       });
+      setUserLogoPreview(user.logoUrl || null);
     } else {
       setEditingUser(null);
       setUserForm({
@@ -328,9 +343,53 @@ export function Settings() {
         password: "",
         assignedWarehouses: [],
         dealerViewWarehouses: [],
+        logoUrl: "",
       });
+      setUserLogoPreview(null);
     }
     setIsUserDialogOpen(true);
+  };
+
+  const handleUserLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!validateFileSize(file)) {
+        e.target.value = "";
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUserLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+
+      // If editing, we can upload immediately if we want, 
+      // but for simplicity in "Add User" flow where ID doesn't exist yet, 
+      // we'll handle it by getting the URL first or uploading after user creation.
+      // However, the backend requires logoUrl during creation.
+
+      // We'll use a temporary upload to get a URL if we had a dedicated "temp upload" 
+      // but for now, we'll assume the logo is uploaded as part of the form or we use a separate endpoint.
+
+      // Let's create a temporary FormData to upload to a generic "logo upload" if it exists,
+      // or we can use the Company Logo upload endpoint as a proxy if it's generic enough,
+      // but it's better to use the user logo endpoint.
+
+      const formData = new FormData();
+      formData.append("logo", file);
+
+      // We need a userId to upload to /users/:id/logo. 
+      // For NEW users, we can't do this yet easily without a placeholder.
+      // Let's modify the plan slightly: handle logoUrl as a string during creation (maybe from a generic upload).
+
+      // Actually, let's just use the company logo upload handler's logic to get a URL
+      // if the backend allowed it. For now, since it's mandatory, I'll simulate the upload 
+      // or use a direct S3 upload if configured.
+
+      // For this implementation, I'll use the existing uploadLogoMutation but we need to know where it goes.
+      // I'll add a specific mutation for user logos if not present.
+    }
   };
 
   const handleSaveUser = async () => {
@@ -348,6 +407,12 @@ export function Settings() {
         toast.error("Password is required for new users");
         return;
       }
+
+      if (userForm.role === "Distributor" && !userForm.logoUrl) {
+        toast.error("Logo is mandatory for Distributor role");
+        return;
+      }
+
       const payload: any = { ...userForm };
 
       addUserMutation.mutate(payload, {
@@ -431,13 +496,37 @@ export function Settings() {
     }
   };
 
+  const handleSetPermissionValue = (role: string, module: string, actionKey: string, value: any) => {
+    setLocalPermissions((prev: any[]) =>
+      prev.map((p: any) => {
+        if (p.role === role) {
+          const updatedPermissions = { ...p.permissions };
+          const modulePerms = { ...updatedPermissions[module] };
+          modulePerms[actionKey] = value;
+          updatedPermissions[module] = modulePerms;
+          return { ...p, permissions: updatedPermissions };
+        }
+        return p;
+      })
+    );
+  };
+
   const handleTogglePermission = (role: string, module: string, actionKey: string) => {
     setLocalPermissions((prev: any[]) =>
       prev.map((p: any) => {
         if (p.role === role) {
           const updatedPermissions = { ...p.permissions };
           const modulePerms = { ...updatedPermissions[module] };
-          modulePerms[actionKey] = !modulePerms[actionKey];
+          
+          // If it's a string, toggling "off" makes it false.
+          // Toggling "on" from false is tricky without knowing the target level, 
+          // so we'll default level-based ones to their most common level or 'true'
+          if (typeof modulePerms[actionKey] === "string") {
+            modulePerms[actionKey] = false;
+          } else {
+            modulePerms[actionKey] = !modulePerms[actionKey];
+          }
+          
           updatedPermissions[module] = modulePerms;
           return { ...p, permissions: updatedPermissions };
         }
@@ -450,10 +539,10 @@ export function Settings() {
     // Save for each role but only show toast for the last one
     localPermissions.forEach((p: any, index: number) => {
       const isLast = index === localPermissions.length - 1;
-      updatePermissionsMutation.mutate({ 
-        role: p.role, 
-        permissions: p.permissions, 
-        quiet: !isLast 
+      updatePermissionsMutation.mutate({
+        role: p.role,
+        permissions: p.permissions,
+        quiet: !isLast
       });
     });
   };
@@ -465,13 +554,45 @@ export function Settings() {
     const roleData = localPermissions.find((p: any) => p.role === role);
     const val = roleData?.permissions?.[module]?.[actionKey];
 
+    const isLevelBased = ["view", "edit", "uploadDocs", "cancel", "updateStatus", "convertToOrder"].includes(actionKey);
+
     if (isSuperAdmin && role !== "Super Admin") {
+      if (isLevelBased && typeof val === "string") {
+        const options = actionKey === "uploadDocs" 
+          ? ["All", "Creator only"] 
+          : ["Full", "Region", "Own"];
+
+        return (
+          <Select 
+            value={val} 
+            onValueChange={(newVal) => handleSetPermissionValue(role, module, actionKey, newVal)}
+          >
+            <SelectTrigger className="h-7 w-[110px] text-[10px] mx-auto">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map(opt => (
+                <SelectItem key={opt} value={opt} className="text-[10px]">{opt}</SelectItem>
+              ))}
+              <SelectItem value="false" className="text-[10px] text-red-600">Disabled</SelectItem>
+            </SelectContent>
+          </Select>
+        );
+      }
+
       return (
         <div className="flex justify-center">
           <input
             type="checkbox"
             checked={!!val}
-            onChange={() => handleTogglePermission(role, module, actionKey)}
+            onChange={() => {
+                if (isLevelBased && !val) {
+                    // Default to 'Own' when enabling a level-based permission
+                    handleSetPermissionValue(role, module, actionKey, actionKey === "uploadDocs" ? "Creator only" : "Own");
+                } else {
+                    handleTogglePermission(role, module, actionKey);
+                }
+            }}
             className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
           />
         </div>
@@ -498,18 +619,7 @@ export function Settings() {
     { label: "Approve Dealer KYC", key: "approveKYC", module: "dealers" },
     { label: "Edit Dealer Profiles", key: "editProfiles", module: "dealers" },
     { label: "Deactivate Dealer Account", key: "deactivate", module: "dealers" },
-  ];
-
-  const orderPermissions = [
-    { label: "View Orders", key: "view", module: "orders" },
-    { label: "Create New Orders", key: "create", module: "orders" },
-    { label: "Upload/Edit Order Documents", key: "uploadDocs", module: "orders" },
-    { label: "Update Delivery Status", key: "updateDelivery", module: "orders" },
-    { label: "Cancel Orders", key: "cancel", module: "orders" },
-    { label: "Approve Payments & Orders", key: "approvePayment", module: "orders" },
-    { label: "Upload Lovol Invoices", key: "uploadLovolInvoice", module: "orders" },
-    { label: "Request Documents", key: "requestDocs", module: "orders" },
-    { label: "Status Override", key: "statusOverride", module: "orders" },
+    { label: "Delete Dealer", key: "delete", module: "dealers" },
   ];
 
   const inventoryPermissions = [
@@ -524,6 +634,12 @@ export function Settings() {
     { label: "Create New Products", key: "create", module: "products" },
     { label: "Edit Product Details", key: "edit", module: "products" },
     { label: "Delete Products", key: "delete", module: "products" },
+  ];
+
+  const customerPermissions = [
+    { label: "View Customers", key: "view", module: "customers" },
+    { label: "Edit Customer Details", key: "edit", module: "customers" },
+    { label: "Delete Customers", key: "delete", module: "customers" },
   ];
 
   const renderIcon = (val: boolean | string) => {
@@ -827,18 +943,27 @@ export function Settings() {
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {u.role === "Distributor" ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 hover:bg-gray-100"
-                                onClick={() => toggleDistributor(u._id)}
-                              >
-                                {expandedDistributors.has(u._id) ? (
-                                  <ChevronDown className="h-4 w-4 text-gray-500" />
-                                ) : (
-                                  <ChevronRight className="h-4 w-4 text-gray-500" />
-                                )}
-                              </Button>
+                              usersData.some(d => {
+                                if (d.role !== "Dealer") return false;
+                                const dRef = d.dealerId;
+                                const distId = typeof dRef === 'object' ? dRef?.distributorId : null;
+                                return distId === u._id;
+                              }) ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 hover:bg-gray-100"
+                                  onClick={() => toggleDistributor(u._id)}
+                                >
+                                  {expandedDistributors.has(u._id) ? (
+                                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4 text-gray-500" />
+                                  )}
+                                </Button>
+                              ) : (
+                                <div className="w-6" /> // Spacer for distributors without dealers
+                              )
                             ) : u.isSubAccount ? (
                               <div className="ml-8 border-l-2 border-b-2 border-gray-300 w-3 h-3 -mt-2 rounded-bl-sm" />
                             ) : (
@@ -874,7 +999,7 @@ export function Settings() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                             <Button
+                            <Button
                               variant="ghost"
                               size="sm"
                               disabled={deleteUserMutation.isPending}
@@ -968,10 +1093,10 @@ export function Settings() {
                             <Warehouse className="w-5 h-5 text-blue-600" />
                           </div>
                           <div>
-                             <h3 className="font-semibold text-gray-900">
-                               {warehouse.name}
-                             </h3>
-                           </div>
+                            <h3 className="font-semibold text-gray-900">
+                              {warehouse.name}
+                            </h3>
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1045,7 +1170,7 @@ export function Settings() {
                 </p>
               </div>
               {isSuperAdmin ? (
-                <Button 
+                <Button
                   onClick={handleSavePermissions}
                   disabled={updatePermissionsMutation.isPending}
                   className="bg-blue-600 hover:bg-blue-700"
@@ -1130,40 +1255,6 @@ export function Settings() {
                 </div>
               </div>
 
-              {/* Order Management Permissions */}
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                    <ClipboardList className="w-4 h-4 text-green-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Order Management</h3>
-                </div>
-                <div className="border rounded-lg overflow-hidden">
-                  <Table>
-                    <TableHeader className="bg-gray-50">
-                      <TableRow>
-                        <TableHead className="w-[300px]">Permission Unit</TableHead>
-                        <TableHead className="text-center">Super Admin</TableHead>
-                        <TableHead className="text-center">Distributor</TableHead>
-                        <TableHead className="text-center">Dealer</TableHead>
-                        <TableHead className="text-center">WH Admin</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {orderPermissions.map((perm, i) => (
-                        <TableRow key={i}>
-                          <TableCell className="font-medium text-gray-700">{perm.label}</TableCell>
-                          <TableCell className="text-center">{renderPermissionCell("Super Admin", perm.module, perm.key)}</TableCell>
-                          <TableCell className="text-center">{renderPermissionCell("Distributor", perm.module, perm.key)}</TableCell>
-                          <TableCell className="text-center">{renderPermissionCell("Dealer", perm.module, perm.key)}</TableCell>
-                          <TableCell className="text-center">{renderPermissionCell("Warehouse Admin", perm.module, perm.key)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-
               {/* Inventory Management Permissions */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
@@ -1219,6 +1310,40 @@ export function Settings() {
                     </TableHeader>
                     <TableBody>
                       {productPermissions.map((perm, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-medium text-gray-700">{perm.label}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Super Admin", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Distributor", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Dealer", perm.module, perm.key)}</TableCell>
+                          <TableCell className="text-center">{renderPermissionCell("Warehouse Admin", perm.module, perm.key)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* Customer Management Permissions */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                    <Users className="w-4 h-4 text-green-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">Customer Management</h3>
+                </div>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead className="w-[300px]">Permission Unit</TableHead>
+                        <TableHead className="text-center">Super Admin</TableHead>
+                        <TableHead className="text-center">Distributor</TableHead>
+                        <TableHead className="text-center">Dealer</TableHead>
+                        <TableHead className="text-center">WH Admin</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {customerPermissions.map((perm, i) => (
                         <TableRow key={i}>
                           <TableCell className="font-medium text-gray-700">{perm.label}</TableCell>
                           <TableCell className="text-center">{renderPermissionCell("Super Admin", perm.module, perm.key)}</TableCell>
@@ -1293,9 +1418,9 @@ export function Settings() {
                                 </div>
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   className="h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                   onClick={() => handleOpenMappingDialog(u)}
                                 >
@@ -1373,12 +1498,17 @@ export function Settings() {
               <Input
                 id="user-phone"
                 value={userForm.phone}
-                onChange={(e) =>
-                  setUserForm({ ...userForm, phone: e.target.value })
-                }
-                placeholder="+91-XXXXXXXXXX"
+                onChange={(e) => {
+                  const value = e.target.value.replace(/[^0-9]/g, "");
+                  if (value.length <= 10) {
+                    setUserForm({ ...userForm, phone: value });
+                  }
+                }}
+                placeholder="10-digit mobile number"
                 className="mt-1"
+                maxLength={10}
               />
+              <p className="text-[10px] text-gray-500 mt-1">Enter exactly 10 digits without country code.</p>
             </div>
 
             <div>
@@ -1422,10 +1552,89 @@ export function Settings() {
 
             {userForm.role === "Distributor" && (
               <div className="space-y-4 border-t pt-4 mt-2">
+                <Label className="flex items-center gap-2">
+                  Distributor Logo *
+                  <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold uppercase">Mandatory</span>
+                </Label>
+                <div className="flex items-center gap-4">
+                  {userLogoPreview ? (
+                    <img
+                      src={userLogoPreview}
+                      alt="User Logo Preview"
+                      className="w-16 h-16 object-contain border border-gray-200 rounded-lg shadow-sm bg-white"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 bg-gray-50 border border-dashed border-gray-200 rounded-lg flex items-center justify-center">
+                      <Users className="w-6 h-6 text-gray-300" />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      id="user-logo-upload"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (!validateFileSize(file)) return;
+
+                          const reader = new FileReader();
+                          reader.onloadend = () => setUserLogoPreview(reader.result as string);
+                          reader.readAsDataURL(file);
+
+                          const formData = new FormData();
+                          formData.append("logo", file);
+
+                          try {
+                            // If editing, use the specific user logo endpoint
+                            if (editingUser) {
+                              updateUserLogoMutation.mutate({
+                                id: editingUser._id,
+                                formData
+                              }, {
+                                onSuccess: (data) => {
+                                  setUserForm(prev => ({ ...prev, logoUrl: data.logoUrl }));
+                                }
+                              });
+                            } else {
+                              // For new user, we use the GENERIC upload endpoint
+                              // to avoid updating the global company logo!
+                              uploadGenericImageMutation.mutate(formData, {
+                                onSuccess: (data) => {
+                                  setUserForm(prev => ({ ...prev, logoUrl: data.logoUrl }));
+                                  toast.success("Logo ready for new distributor");
+                                }
+                              });
+                            }
+                          } catch (err) {
+                            toast.error("Error uploading logo");
+                          }
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-9"
+                      onClick={() => document.getElementById("user-logo-upload")?.click()}
+                    >
+                      <Upload className="w-3.5 h-3.5 mr-2" />
+                      {userLogoPreview ? "Change Logo" : "Upload Logo"}
+                    </Button>
+                    <p className="text-[10px] text-gray-500 mt-1.5">Recommended: Square PNG/JPG, max 2MB.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {userForm.role === "Distributor" && (
+              <div className="space-y-4 border-t pt-4 mt-2">
                 <h4 className="font-semibold text-sm text-blue-900 flex items-center gap-2">
                   <Warehouse className="w-4 h-4" /> Warehouse Visibility Mapping
                 </h4>
-                
+
                 <div className="space-y-2">
                   <Label className="text-xs uppercase tracking-wider text-gray-500 font-bold">
                     Assigned Warehouses (Distributor View)
@@ -1504,7 +1713,7 @@ export function Settings() {
               disabled={
                 !userForm.name ||
                 !userForm.email ||
-                !userForm.phone ||
+                userForm.phone.length !== 10 ||
                 !userForm.role
               }
             >
@@ -1713,8 +1922,8 @@ export function Settings() {
               <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto p-2 border rounded-md">
                 {warehousesData.map((wh: any) => (
                   <div key={wh._id} className="flex items-center space-x-2">
-                    <Checkbox 
-                      id={`own-${wh._id}`} 
+                    <Checkbox
+                      id={`own-${wh._id}`}
                       checked={mappingFormData.assignedWarehouses.includes(wh._id)}
                       onCheckedChange={(checked) => {
                         const current = [...mappingFormData.assignedWarehouses];
@@ -1740,8 +1949,8 @@ export function Settings() {
               <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto p-2 border rounded-md">
                 {warehousesData.map((wh: any) => (
                   <div key={wh._id} className="flex items-center space-x-2">
-                    <Checkbox 
-                      id={`dealer-${wh._id}`} 
+                    <Checkbox
+                      id={`dealer-${wh._id}`}
                       checked={mappingFormData.dealerViewWarehouses.includes(wh._id)}
                       onCheckedChange={(checked) => {
                         const current = [...mappingFormData.dealerViewWarehouses];

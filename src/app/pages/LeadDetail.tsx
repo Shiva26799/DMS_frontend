@@ -47,9 +47,10 @@ import {
   useCreateOrder,
   useDeleteLead
 } from "../hooks/useLeads";
-import { useDealers } from "../hooks/useDealers";
+import { useAssignees } from "../hooks/useDealers";
 import { useAuth } from "../context/AuthContext";
 import { OrderForm } from "../components/OrderForm";
+import { useRBAC } from "../hooks/useRBAC";
 
 interface ActivityLog {
   _id?: string;
@@ -70,6 +71,10 @@ interface FollowUp {
 interface ExtendedLead extends Lead {
   activityLog?: ActivityLog[];
   followUps?: FollowUp[];
+  distributorId?: {
+    _id: string;
+    name: string;
+  };
 }
 
 interface Dealer {
@@ -83,8 +88,9 @@ export function LeadDetail() {
   const navigate = useNavigate();
 
   const { isAdmin, isDistributor, isDealer } = useAuth();
+  const { checkPermission } = useRBAC();
   const { data: lead, isLoading: isLeadLoading } = useLeadDetail(id);
-  const { data: dealers = [] } = useDealers();
+  const { data: assignees = [] } = useAssignees();
 
   const updateStatusMutation = useUpdateLeadStatus();
   const assignDealerMutation = useAssignLeadDealer();
@@ -102,7 +108,7 @@ export function LeadDetail() {
   // Form states
   const [newStatus, setNewStatus] = useState("");
   const [selectedDealerId, setSelectedDealerId] = useState("");
-  const [selectedDealerName, setSelectedDealerName] = useState("");
+  const [selectedDealerType, setSelectedDealerType] = useState<"Dealer" | "Distributor" | "">("");
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpNote, setFollowUpNote] = useState("");
   const [lossReason, setLossReason] = useState("");
@@ -135,7 +141,7 @@ export function LeadDetail() {
     assignDealerMutation.mutate({
       id,
       dealerId: selectedDealerId,
-      dealerName: selectedDealerName
+      type: selectedDealerType
     }, {
       onSuccess: () => setActiveAction(null)
     });
@@ -297,7 +303,7 @@ export function LeadDetail() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link to="/leads">
+          <Link to={lead.stage === "Customer" ? "/customers" : "/leads"}>
             <Button variant="outline" size="sm">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back
@@ -307,17 +313,10 @@ export function LeadDetail() {
             <h1 className="text-2xl font-bold text-gray-900">
               {lead.customerName}
             </h1>
-            <div className="flex items-center gap-3 mt-1">
-              <p className="text-sm text-gray-600">Lead ID: {lead._id.substring(lead._id.length - 6).toUpperCase()}</p>
-              <span className="text-gray-300">•</span>
-              <p className="text-xs text-gray-500">
-                Created {Math.floor((new Date().getTime() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24))} days ago
-              </p>
-            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {(isAdmin || isDistributor || isDealer) && (
+          {checkPermission("leads", "delete") && (
             <Button
               variant="ghost"
               size="sm"
@@ -352,7 +351,7 @@ export function LeadDetail() {
               disabled={deleteLeadMutation.isPending}
             >
               {deleteLeadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Delete Lead
+              {lead.stage === "Customer" ? "Delete Customer" : "Delete Lead"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -434,6 +433,13 @@ export function LeadDetail() {
                 </div>
               </div>
               <div>
+                <p className="text-sm text-gray-600 mb-1">Assigned Distributor</p>
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-purple-500" />
+                  <p className="text-sm font-medium text-gray-900">{lead.distributorId?.name || "Not Assigned"}</p>
+                </div>
+              </div>
+              <div>
                 <p className="text-sm text-gray-600 mb-1">Source</p>
                 <div className="flex">
                   <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${lead.source === "Web" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
@@ -442,11 +448,11 @@ export function LeadDetail() {
                 </div>
               </div>
               <div>
-                <p className="text-sm text-gray-600 mb-1">Assigned Date</p>
+                <p className="text-sm text-gray-600 mb-1">Created Date</p>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-400" />
                   <p className="text-sm font-medium text-gray-900">
-                    {lead.assignedDate ? new Date(lead.assignedDate).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }) : "—"}
+                    {new Date(lead.createdAt).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' })}
                   </p>
                 </div>
               </div>
@@ -491,8 +497,9 @@ export function LeadDetail() {
                       <p className="text-sm text-gray-900">{lead.notes}</p>
                     </div>
                   )}
+                  <p className="text-sm font-semibold text-gray-900 mb-2">Internal Notes</p>
                   <Textarea
-                    placeholder="Add a new note..."
+                    placeholder="e.g. Customer is looking for a discount on bulk purchase. Prefers communication via WhatsApp."
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                   />
@@ -555,61 +562,69 @@ export function LeadDetail() {
         <div className="space-y-6">
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-0.5">
-              {activeAction ? "Update Lead" : "Actions"}
+              {activeAction ? (lead.stage === "Customer" ? "Update Customer" : "Update Lead") : "Actions"}
             </h3>
 
             <div className="space-y-4">
               {!activeAction ? (
                 <div className="space-y-2">
-                  <Button
-                    className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                    disabled={actionLoading}
-                    onClick={() => setIsConvertDialogOpen(true)}
-                  >
-                    {createOrderMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                    Create Order
-                  </Button>
-                  <Button
-                    className="w-full justify-start"
-                    variant="outline"
-                    onClick={() => {
-                      setNewStatus(lead.status);
-                      setActiveAction("status");
-                      setTimeout(() => setIsStatusSelectOpen(true), 100);
-                    }}
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Change Status
-                  </Button>
-                    {(isAdmin || isDistributor) && (
+                  {checkPermission("leads", "convertToOrder") && (
+                    <Button
+                      className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                      disabled={actionLoading}
+                      onClick={() => setIsConvertDialogOpen(true)}
+                    >
+                      {createOrderMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                      Create Order
+                    </Button>
+                  )}
+                  {checkPermission("leads", "updateStatus") && (
+                    <Button
+                      className="w-full justify-start"
+                      variant="outline"
+                      onClick={() => {
+                        setNewStatus(lead.status);
+                        setActiveAction("status");
+                        setTimeout(() => setIsStatusSelectOpen(true), 100);
+                      }}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Change Status
+                    </Button>
+                  )}
+                    {checkPermission("leads", "assignToDealers") && (
                       <Button
                         className="w-full justify-start"
                         variant="outline"
                         onClick={() => setActiveAction("assign")}
                       >
                         <User className="w-4 h-4 mr-2" />
-                        Assign Dealer
+                        Assign Dealer/Distributor
                       </Button>
                     )}
-                  <Button
-                    className="w-full justify-start"
-                    variant="outline"
-                    onClick={() => setActiveAction("followup")}
-                  >
-                    <Calendar className="w-4 h-4 mr-2" />
-                    Schedule Follow-up
-                  </Button>
-                  <Button
-                    className="w-full justify-start"
-                    variant="outline"
-                    onClick={() => {
-                      setNewRating(lead.rating);
-                      setActiveAction("rating" as any);
-                    }}
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Change Rating
-                  </Button>
+                  {checkPermission("leads", "addActivities") && (
+                    <Button
+                      className="w-full justify-start"
+                      variant="outline"
+                      onClick={() => setActiveAction("followup")}
+                    >
+                      <Calendar className="w-4 h-4 mr-2" />
+                      Schedule Follow-up
+                    </Button>
+                  )}
+                  {checkPermission("leads", "edit") && (
+                    <Button
+                      className="w-full justify-start"
+                      variant="outline"
+                      onClick={() => {
+                        setNewRating(lead.rating);
+                        setActiveAction("rating" as any);
+                      }}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Change Rating
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -669,20 +684,21 @@ export function LeadDetail() {
 
                   {activeAction === "assign" && (
                     <div className="space-y-3">
-                      <Label className="text-sm font-medium">Select Dealer</Label>
+                      <Label className="text-sm font-medium">Select Dealer/Distributor</Label>
                       <Select
                         value={selectedDealerId}
                         onValueChange={(val) => {
                           setSelectedDealerId(val);
-                          const d = dealers.find((d: any) => d._id === val);
-                          setSelectedDealerName(d?.companyName || "");
+                          const chosen = assignees.find((a: any) => a._id === val);
+                          setSelectedDealerType(chosen?.type || "");
                         }}
                       >
-                        <SelectTrigger><SelectValue placeholder="Select a dealer" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select a dealer or distributor" /></SelectTrigger>
                         <SelectContent>
-                          {isDistributor && <SelectItem value="self">Assign to Myself</SelectItem>}
-                          {dealers.filter((d: any) => d.status === "Approved").map((d: any) => (
-                            <SelectItem key={d._id} value={d._id}>{d.companyName}</SelectItem>
+                          {assignees.map((a: any) => (
+                            <SelectItem key={a._id} value={a._id}>
+                              {a.name} <span className="text-[10px] text-gray-400 ml-1">({a.type})</span>
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -715,7 +731,7 @@ export function LeadDetail() {
                         <Label htmlFor="follow-up-note">Note</Label>
                         <Textarea
                           id="follow-up-note"
-                          placeholder="e.g. Call to confirm demo"
+                          placeholder="e.g. Call customer to discuss pricing and schedule a product demo..."
                           value={followUpNote}
                           onChange={(e) => setFollowUpNote(e.target.value)}
                           className="bg-white min-h-[80px]"
@@ -798,20 +814,26 @@ export function LeadDetail() {
           {lead && (
             <OrderForm 
               initialData={{
-                dealerId: lead.dealerId?._id || lead.dealerId,
+                dealerId: lead.dealerId?._id || lead.dealerId || lead.assignedTo?._id || lead.assignedTo,
                 orderSource: "Warehouse",
+                leadId: lead._id,
+                customerName: lead.customerName,
                 products: [{
                   productId: "", // Manual selection for accuracy
                   quantity: 1,
-                  price: lead.value || 0
+                  price: ""
                 }]
               }}
               onSubmit={async (data) => {
                 try {
                   await createOrderMutation.mutateAsync({
                     leadId: lead._id,
+                    dealerId: data.dealerId,
                     warehouseId: data.warehouseId,
-                    orderSource: data.orderSource
+                    orderSource: data.orderSource,
+                    products: data.products,
+                    buyerType: data.buyerType,
+                    customerName: data.customerName
                   });
                   toast.success("Lead converted to order successfully");
                   setIsConvertDialogOpen(false);

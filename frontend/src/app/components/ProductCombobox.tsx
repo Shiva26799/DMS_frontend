@@ -212,6 +212,15 @@ export function ProductCombobox({
     }
   }
 
+  const handleClear = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSingleValue(null)
+    setSearch("")
+    onSelect(null)
+    setOpen(false)
+  }
+
   const removeTag = (e: React.MouseEvent, productId: string) => {
     console.log(`[DEBUG] removeTag called for product: ${productId}`)
     e.preventDefault()
@@ -370,6 +379,17 @@ export function ProductCombobox({
             )}
           </div>
         </div>
+        
+        {!multiple && singleValue && !disabled && (
+          <button
+            type="button"
+            className="h-7 w-7 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors mr-1"
+            onClick={handleClear}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+        
         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100 transition-opacity" />
       </div>
 

@@ -20,7 +20,7 @@ interface OrderContextType {
   markOrderAsReceived: (orderId: string) => Promise<Order>;
   markInstallationComplete: (orderId: string) => Promise<Order>;
   registerWarranty: (orderId: string, formData: FormData) => Promise<Order>;
-  updateOrderStatus: (orderId: string, status: string, progress: number) => Promise<Order>;
+//   updateOrderStatus: (orderId: string, status: string, progress: number) => Promise<Order>;
   cancelOrder: (orderId: string) => Promise<Order>;
   uploadAdditionalDocument: (orderId: string, file: File, name: string) => Promise<Order>;
   deleteAdditionalDocument: (orderId: string, name: string) => Promise<Order>;
@@ -321,6 +321,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     }
   };
 
+/*
   const updateOrderStatus = async (orderId: string, status: string, progress: number) => {
     try {
       const res = await apiClient.patch(`/orders/${orderId}/status`, { status, progress });
@@ -332,6 +333,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       throw error;
     }
   };
+*/
 
   const cancelOrder = async (orderId: string) => {
     try {
@@ -415,7 +417,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     markOrderAsReceived,
     markInstallationComplete,
     registerWarranty,
-    updateOrderStatus,
+    // updateOrderStatus,
     cancelOrder,
     uploadAdditionalDocument,
     deleteAdditionalDocument,
@@ -423,7 +425,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     requestDocument,
     refreshOrders: fetchOrders,
     stats
-  }), [orders, pagination, stats, isLoading, addOrder, getOrder, getOrdersByDealer, fetchOrders, uploadPODocument, uploadPaymentDocument, approveOrder, finalizeOrderApproval, uploadLovolInvoice, uploadDealerInvoice, updateDeliveryStatus, markOrderAsReceived, markInstallationComplete, registerWarranty, updateOrderStatus, cancelOrder, uploadAdditionalDocument, deleteAdditionalDocument, deletePrimaryDocument, requestDocument]);
+  }), [orders, pagination, stats, isLoading, addOrder, getOrder, getOrdersByDealer, fetchOrders, uploadPODocument, uploadPaymentDocument, approveOrder, finalizeOrderApproval, uploadLovolInvoice, uploadDealerInvoice, updateDeliveryStatus, markOrderAsReceived, markInstallationComplete, registerWarranty, cancelOrder, uploadAdditionalDocument, deleteAdditionalDocument, deletePrimaryDocument, requestDocument]);
 
   return (
     <OrderContext.Provider value={contextValue}>

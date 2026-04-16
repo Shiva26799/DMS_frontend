@@ -14,7 +14,7 @@ const PRIVATE_KEY_PATH = path.join(__dirname, "../../private_key.pem");
 export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email }).populate("dealerId");
 
         if (!user) {
             return res.status(401).json({ message: "Invalid email or password" });
@@ -34,14 +34,15 @@ export const login = async (req, res) => {
         user.lastLogin = new Date();
         await user.save();
 
+        // Read private key for RS256 signing
+        const privateKey = fs.readFileSync(PRIVATE_KEY_PATH, "utf8");
 
-        // Use symmetric secret for HS256 signing
         const token = jwt.sign(
             { userId: user._id, role: user.role },
-            process.env.JWT_SECRET,
+            privateKey,
             {
-                algorithm: "HS256",
-                expiresIn: process.env.JWT_EXPIRATION || "1d"
+                algorithm: process.env.JWT_ALGO,
+                expiresIn: process.env.JWT_EXPIRATION
             }
         );
 
@@ -52,8 +53,10 @@ export const login = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
+                logoUrl: user.logoUrl,
                 managedWarehouseId: user.managedWarehouseId,
-                dealerId: user.dealerId
+                dealerId: user.dealerId,
+                createdAt: user.createdAt
             }
         });
     } catch (error) {

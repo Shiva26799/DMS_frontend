@@ -5,6 +5,7 @@ import { Login } from "./pages/Login";
 import { ExecutiveDashboard } from "./pages/ExecutiveDashboard";
 import { LeadManagement } from "./pages/LeadManagement";
 import { LeadDetail } from "./pages/LeadDetail";
+import { CustomerManagement } from "./pages/CustomerManagement";
 import { DealerManagement } from "./pages/DealerManagement";
 import { DealerDetail } from "./pages/DealerDetail";
 import { ProductCatalogue } from "./pages/ProductCatalogue";
@@ -17,6 +18,7 @@ import { WarrantyDetail } from "./pages/WarrantyDetail";
 import { MaintenanceManagement } from "./pages/MaintenanceManagement";
 import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
+import Profile from "./pages/Profile";
 import SuperAdminGuard from "./routes/guards/SuperAdminGuard";
 
 export const router = createBrowserRouter([
@@ -35,6 +37,8 @@ export const router = createBrowserRouter([
           { index: true, Component: ExecutiveDashboard },
           { path: "leads", Component: LeadManagement },
           { path: "leads/:id", Component: LeadDetail },
+          { path: "customers", Component: CustomerManagement },
+          { path: "customers/:id", Component: LeadDetail },
           { path: "dealers", Component: DealerManagement },
           { path: "dealers/:id", Component: DealerDetail },
           { path: "products", Component: ProductCatalogue },
@@ -46,6 +50,7 @@ export const router = createBrowserRouter([
           { path: "warranty/:id", Component: WarrantyDetail },
           { path: "maintenance", Component: MaintenanceManagement },
           { path: "reports", Component: Reports },
+          { path: "profile", Component: Profile },
           { 
             path: "settings", 
             element: <SuperAdminGuard><Settings /></SuperAdminGuard> 

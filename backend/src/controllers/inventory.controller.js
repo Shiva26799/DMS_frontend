@@ -10,8 +10,12 @@ import { Product } from "../models/product.model.js";
  */
 export const getOwnInventory = async (req, res) => {
     try {
-        const { role, _id, dealerId: userDealerId, managedWarehouseId } = req.user;
-        let ownerId = _id;
+        const userId = req.user._id?._id || req.user._id;
+        const userDealerId = req.user.dealerId?._id || req.user.dealerId;
+        const userWarehouseId = req.user.managedWarehouseId?._id || req.user.managedWarehouseId;
+        const role = req.user.role;
+
+        let ownerId = userId;
         let ownerType = role;
 
         const { dealerId: requestedDealerId, page = 1, limit = 10, search, category, status } = req.query;
@@ -102,23 +106,26 @@ export const getOwnInventory = async (req, res) => {
  */
 export const getWarehouseInventory = async (req, res) => {
     try {
-        const { role, assignedWarehouses, dealerId } = req.user;
+        const userId = req.user._id?._id || req.user._id;
+        const userDealerId = req.user.dealerId?._id || req.user.dealerId;
+        const role = req.user.role;
+
         let allowedWarehouseIds = [];
 
         if (role === "Super Admin") {
             const warehouses = await Warehouse.find({});
             allowedWarehouseIds = warehouses.map(w => w._id);
         } else if (role === "Distributor") {
-            allowedWarehouseIds = assignedWarehouses || [];
+            allowedWarehouseIds = req.user.assignedWarehouses || [];
         } else if (role === "Dealer") {
-            const dealer = await Dealer.findById(dealerId).populate("distributorId");
+            const dealer = await Dealer.findById(userDealerId).populate("distributorId");
             if (dealer && dealer.distributorId) {
                 allowedWarehouseIds = (dealer.distributorId.dealerViewWarehouses?.length > 0)
                     ? dealer.distributorId.dealerViewWarehouses
                     : (dealer.distributorId.assignedWarehouses || []);
             }
         } else if (role === "Warehouse Admin") {
-            allowedWarehouseIds = [req.user.managedWarehouseId];
+            allowedWarehouseIds = [req.user.managedWarehouseId?._id || req.user.managedWarehouseId];
         }
 
         const { warehouseId, page = 1, limit = 10, search, category, status } = req.query;
@@ -211,9 +218,10 @@ export const getSubordinateDealerInventory = async (req, res) => {
 
         let baseQuery = {};
         if (req.user.role === "Distributor") {
-            const dealers = await Dealer.find({ distributorId: req.user._id });
+            const userId = req.user._id?._id || req.user._id;
+            const dealers = await Dealer.find({ distributorId: userId });
             const dealerIds = dealers.map(d => d._id);
-            
+
             if (dealerId && dealerId !== "all") {
                 if (dealerIds.some(id => String(id) === String(dealerId))) {
                     baseQuery = { ownerType: "Dealer", ownerId: dealerId };
@@ -334,6 +342,10 @@ export const bulkUpdateStock = async (req, res) => {
                 }
 
                 // Permission check
+                const userId = String(req.user._id?._id || req.user._id);
+                const userDealerId = req.user.dealerId ? String(req.user.dealerId._id || req.user.dealerId) : null;
+                const userWarehouseId = req.user.managedWarehouseId ? String(req.user.managedWarehouseId._id || req.user.managedWarehouseId) : null;
+
                 if (req.user.role === "Dealer") {
                     if (ownerType === "Warehouse") {
                         if (type !== "subtract") {
@@ -341,21 +353,23 @@ export const bulkUpdateStock = async (req, res) => {
                             continue;
                         }
                     } else if (ownerType === "Dealer") {
-                        if (!ownerId || String(ownerId) === String(req.user._id)) {
-                            ownerId = req.user.dealerId;
+                        // If ownerId is not provided or matches user ID, default to the user's dealerId
+                        if (!ownerId || String(ownerId) === userId || String(ownerId) === userDealerId) {
+                            ownerId = userDealerId;
                         }
-                        if (String(ownerId) !== String(req.user.dealerId)) {
+                        
+                        if (String(ownerId) !== userDealerId) {
                             errors.push({ productId, message: "You can only manage your own shop inventory" });
                             continue;
                         }
                     }
                 } else if (req.user.role === "Distributor") {
-                    if (ownerType !== "Distributor" || String(ownerId) !== String(req.user._id)) {
+                    if (ownerType !== "Distributor" || (String(ownerId) !== userId)) {
                         errors.push({ productId, message: "Distributors can only manage their own distribution inventory" });
                         continue;
                     }
                 } else if (req.user.role === "Warehouse Admin") {
-                    if (ownerType !== "Warehouse" || String(ownerId) !== String(req.user.managedWarehouseId)) {
+                    if (ownerType !== "Warehouse" || (String(ownerId) !== userWarehouseId)) {
                         errors.push({ productId, message: "Warehouse Admins can only manage their assigned warehouse" });
                         continue;
                     }
@@ -396,12 +410,12 @@ export const bulkUpdateStock = async (req, res) => {
         // If there were any errors in the batch, abort the entire transaction
         if (errors.length > 0) {
             await session.abortTransaction();
-            return res.status(400).json({ 
-                message: "Bulk update rolled back due to errors", 
-                success: 0, 
-                failed: errors.length, 
-                results: [], 
-                errors 
+            return res.status(400).json({
+                message: "Bulk update rolled back due to errors",
+                success: 0,
+                failed: errors.length,
+                results: [],
+                errors
             });
         }
 
@@ -426,20 +440,23 @@ export const updateStock = async (req, res) => {
 // Get list of visible warehouses for the current user
 export const getVisibleWarehouses = async (req, res) => {
     try {
-        const { role, id } = req.user;
+        const userId = req.user._id?._id || req.user._id;
+        const role = req.user.role;
         let warehouses = [];
 
         if (role === 'Super Admin') {
             warehouses = await Warehouse.find({});
         } else if (role === 'Distributor') {
-            const user = await User.findById(id);
+            const user = await User.findById(userId);
             if (user?.assignedWarehouses?.length > 0) {
                 warehouses = await Warehouse.find({ _id: { $in: user.assignedWarehouses } });
             }
         } else if (role === 'Dealer') {
-            const dealer = await Dealer.findById(req.user.dealerId);
+            const userDealerId = req.user.dealerId?._id || req.user.dealerId;
+            const dealer = await Dealer.findById(userDealerId);
             if (dealer?.distributorId) {
-                const distributor = await User.findById(dealer.distributorId);
+                const distributorId = dealer.distributorId?._id || dealer.distributorId;
+                const distributor = await User.findById(distributorId);
                 if (distributor) {
                     // FALLBACK: If explicit visibility set is empty, show all warehouses assigned to their distributor
                     const warehouseIds = (distributor.dealerViewWarehouses?.length > 0)

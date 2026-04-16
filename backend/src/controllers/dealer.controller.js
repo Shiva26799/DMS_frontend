@@ -5,16 +5,26 @@ import bcrypt from "bcryptjs";
 export const getDealers = async (req, res) => {
     try {
         const user = req.user;
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
+        const permission = req.permissionValue || "Own"; // Fallback to safe default
 
         let query = {};
 
-        if (user.role === "Distributor") {
-            query.distributorId = user._id;
-        } else if (user.role === "Dealer") {
-            query._id = user.dealerId;
+        // Safe ID extraction
+        const userId = user._id?._id || user._id;
+        const userDealerId = user.dealerId ? (user.dealerId._id || user.dealerId) : null;
+
+        if (permission === "Own") {
+            if (user.role === "Dealer") {
+                query._id = userDealerId;
+            } else {
+                query.distributorId = userId; // Fallback for Dist/Admin if set to Own
+            }
+        } else if (permission === "Region") {
+            // Distributors see their own dealers
+            query.distributorId = userId;
+        } else if (permission === "Full") {
+            // No filter for full access
+            query = {};
         }
 
         const dealers = await Dealer.find(query)
@@ -32,13 +42,15 @@ export const onboardDealer = async (req, res) => {
     try {
         const dealerData = { ...req.body };
 
-        // Process KYC Documents from uploaded files
-        if (req.files && Array.isArray(req.files)) {
+        // Always build kycDocuments array from uploaded files (even if sent as separate fields)
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
             dealerData.kycDocuments = req.files.map(file => ({
                 name: file.fieldname,
                 url: file.location,
                 uploadedAt: new Date()
             }));
+        } else {
+            dealerData.kycDocuments = [];
         }
 
         // Automatically assign distributorId if created by a Distributor
@@ -48,7 +60,7 @@ export const onboardDealer = async (req, res) => {
         };
 
         if (req.user.role === "Distributor") {
-            dealerData.distributorId = req.user._id;
+            dealerData.distributorId = req.user._id?._id || req.user._id;
         } else if (req.user.role === "Super Admin" && dealerData.distributorId) {
             // If Admin is onboarding and selected a distributor, try to get their name
             const dist = await User.findById(dealerData.distributorId);
@@ -72,7 +84,10 @@ export const onboardDealer = async (req, res) => {
 
         const dealer = new Dealer(dealerData);
         await dealer.save();
-        res.status(201).json(dealer);
+        
+        // Populate before returning so frontend has the distributor name immediately
+        const populatedDealer = await Dealer.findById(dealer._id).populate("distributorId", "name");
+        res.status(201).json(populatedDealer);
     } catch (error) {
         res.status(400).json({ message: "Failed to onboard dealer", error });
     }
@@ -137,7 +152,7 @@ export const updateDealer = async (req, res) => {
         const { id } = req.params;
         const updates = req.body;
 
-        const dealer = await Dealer.findByIdAndUpdate(id, updates, { new: true });
+        const dealer = await Dealer.findByIdAndUpdate(id, updates, { new: true }).populate("distributorId", "name");
         if (!dealer) return res.status(404).json({ message: "Dealer not found" });
 
         res.json(dealer);
@@ -164,10 +179,11 @@ export const getAssignees = async (req, res) => {
             ];
         } else if (user.role === "Distributor") {
             // Fetch dealers under this distributor
-            const dealers = await Dealer.find({ distributorId: user._id, status: "Approved" }).select("_id companyName").sort({ companyName: 1 });
+            const userId = user._id?._id || user._id;
+            const dealers = await Dealer.find({ distributorId: userId, status: "Approved" }).select("_id companyName").sort({ companyName: 1 });
             
             assignees = [
-                { _id: user._id, name: `${user.name} (Myself)`, type: "Distributor" },
+                { _id: userId, name: `${user.name} (Myself)`, type: "Distributor" },
                 ...dealers.map(d => ({ _id: d._id, name: d.companyName, type: "Dealer" }))
             ];
         }

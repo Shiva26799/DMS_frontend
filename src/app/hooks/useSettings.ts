@@ -50,6 +50,20 @@ export const useUpdateCompanyLogo = () => {
     });
 };
 
+export const useUploadGenericImage = () => {
+    return useMutation({
+        mutationFn: async (formData: FormData) => {
+            const res = await apiClient.post("settings/upload", formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+            return res.data;
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || "Failed to upload image");
+        },
+    });
+};
+
 // Users
 export const useUsers = () => {
     const { user } = useAuth();
@@ -92,6 +106,26 @@ export const useUpdateUser = () => {
         },
         onError: (error: any) => {
             toast.error(error?.response?.data?.message || "Failed to update user");
+        },
+    });
+};
+
+export const useUpdateUserLogo = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, formData }: { id: string; formData: FormData }) => {
+            const res = await apiClient.put(`settings/users/${id}/logo`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+            return res.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["users"] });
+            queryClient.invalidateQueries({ queryKey: ["session"] });
+            toast.success("User logo uploaded successfully");
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || "Failed to upload user logo");
         },
     });
 };

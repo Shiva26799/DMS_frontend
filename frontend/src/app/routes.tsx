@@ -18,6 +18,7 @@ import { WarrantyDetail } from "./pages/WarrantyDetail";
 import { MaintenanceManagement } from "./pages/MaintenanceManagement";
 import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
+import Profile from "./pages/Profile";
 import SuperAdminGuard from "./routes/guards/SuperAdminGuard";
 
 export const router = createBrowserRouter([
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
           { path: "warranty/:id", Component: WarrantyDetail },
           { path: "maintenance", Component: MaintenanceManagement },
           { path: "reports", Component: Reports },
+          { path: "profile", Component: Profile },
           { 
             path: "settings", 
             element: <SuperAdminGuard><Settings /></SuperAdminGuard> 

@@ -15,8 +15,9 @@ const userSchema = new mongoose.Schema(
         assignedWarehouses: [{ type: mongoose.Schema.Types.ObjectId, ref: "Warehouse" }],
         // Warehouse visibility for Dealers under this Distributor
         dealerViewWarehouses: [{ type: mongoose.Schema.Types.ObjectId, ref: "Warehouse" }],
+        logoUrl: { type: String },
     },
-    { 
+    {
         timestamps: true,
         toJSON: { virtuals: true },
         toObject: { virtuals: true }

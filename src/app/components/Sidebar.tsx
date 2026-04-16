@@ -11,9 +11,11 @@ import {
   BarChart3,
   ChevronDown,
   Settings as SettingsIcon,
+  Contact,
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useCompanyInfo } from "../hooks/useSettings";
 
 interface NavItem {
   name: string;
@@ -24,16 +26,17 @@ interface NavItem {
 }
 
 const navigation: NavItem[] = [
-  { name: "Executive Dashboard", href: "/", icon: LayoutDashboard, allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
+  { name: "Executive Dashboard", href: "/", icon: LayoutDashboard, allowedRoles: ["Super Admin", "Distributor", "Dealer", "Warehouse Admin"] },
   { name: "Lead Management", href: "/leads", icon: Users, allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
+  { name: "Customer Management", href: "/customers", icon: Contact, allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
   { name: "Dealer Management", href: "/dealers", icon: UserCheck, allowedRoles: ["Super Admin", "Distributor"] },
   {
     name: "Products & Inventory",
     icon: Package,
-    allowedRoles: ["Super Admin", "Distributor", "Dealer"],
+    allowedRoles: ["Super Admin", "Distributor", "Dealer", "Warehouse Admin"],
     submenu: [
-      { name: "Product Catalogue", href: "/products", allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
-      { name: "Inventory", href: "/inventory", allowedRoles: ["Super Admin", "Distributor"] },
+      { name: "Product Catalogue", href: "/products", allowedRoles: ["Super Admin", "Distributor", "Dealer", "Warehouse Admin"] },
+      { name: "Inventory", href: "/inventory", allowedRoles: ["Super Admin", "Distributor", "Warehouse Admin"] },
     ],
   },
   { name: "Order Management", href: "/orders", icon: ShoppingCart, allowedRoles: ["Super Admin", "Distributor", "Dealer"] },
@@ -45,7 +48,8 @@ const navigation: NavItem[] = [
 
 export function Sidebar() {
   const location = useLocation();
-  const { user, isSuperAdmin, isDistributor, isDealer, role } = useAuth();
+  const { user, isSuperAdmin, isDistributor, isDealer, isWarehouseAdmin, role } = useAuth();
+  const { data: companyData } = useCompanyInfo();
 
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
     "Products & Inventory"
@@ -83,7 +87,7 @@ export function Sidebar() {
             if (!role) return false;
             
             // Specific overrides for inventory/products if needed
-            if (sub.name === "Inventory") return isSuperAdmin || isDistributor;
+            if (sub.name === "Inventory") return isSuperAdmin || isDistributor || isWarehouseAdmin || isDealer;
             
             return sub.allowedRoles.includes(role);
           }),
@@ -95,25 +99,29 @@ export function Sidebar() {
   return (
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
       {/* Logo */}
-      <div className="h-24 flex items-center px-6 border-b border-gray-200">
-        <div className="flex items-center gap-3">
+      <div className="h-24 flex items-center justify-center px-4 border-b border-gray-200 text-center">
+        <div className="flex items-center gap-1.5 overflow-hidden">
           <img
-            src="/logo.png"
-            alt="Logo"
-            className="w-20 h-20 object-contain rounded-lg"
+            src={companyData?.logoUrl || "/logo.png"}
+            alt="LOVOL"
+            className={`${isDistributor && user?.logoUrl ? "w-16 h-16" : "w-24 h-24"} object-contain flex-shrink-0 transition-all duration-300`}
             onError={(e) => {
-              // Fallback if logo.png doesn't exist yet
-              (e.target as HTMLImageElement).style.display = 'none';
-              (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+              (e.target as HTMLImageElement).src = '/logo.png';
             }}
           />
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center hidden">
-            <span className="text-white font-bold text-lg">L</span>
-          </div>
-          <div>
-            <div className="font-bold text-gray-900">LOVOL</div>
-            <div className="text-xs text-gray-500">Distribution System</div>
-          </div>
+          {isDistributor && user?.logoUrl && (
+            <>
+              <div className="h-10 w-px bg-gray-200 mx-1 flex-shrink-0" />
+              <img
+                src={user.logoUrl}
+                alt={user.name}
+                className="w-16 h-16 object-contain flex-shrink-0 transition-all duration-300"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { Search, Bell, User, LogOut, ChevronDown } from "lucide-react";
+import { Search, Bell, User, LogOut, ChevronDown, Building2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../context/AuthContext";
@@ -112,15 +112,24 @@ export function Header() {
               <ChevronDown className="w-4 h-4 text-gray-500" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
+          <DropdownMenuContent align="end" className="w-56 p-2">
+            <DropdownMenuLabel className="font-semibold p-2">My Account</DropdownMenuLabel>
+            <DropdownMenuSeparator className="my-1" />
+            
+            <DropdownMenuItem 
+              className="cursor-pointer py-2"
+              onClick={() => navigate("/profile")}
+            >
               <User className="w-4 h-4 mr-2" />
               Profile
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-600" onClick={handleLogout}>
+
+            <DropdownMenuSeparator className="my-1" />
+            
+            <DropdownMenuItem 
+              className="text-red-600 cursor-pointer py-2" 
+              onClick={handleLogout}
+            >
               <LogOut className="w-4 h-4 mr-2" />
               Logout
             </DropdownMenuItem>

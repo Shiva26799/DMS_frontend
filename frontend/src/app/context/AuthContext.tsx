@@ -6,8 +6,11 @@ interface User {
     name: string;
     email: string;
     role: string;
-    dealerId?: string;
+    dealerId?: any; 
     managedWarehouseId?: string;
+    phone?: string;
+    logoUrl?: string;
+    createdAt?: string;
 }
 
 interface AuthContextType {

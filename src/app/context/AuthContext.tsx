@@ -6,7 +6,11 @@ interface User {
     name: string;
     email: string;
     role: string;
-    dealerId?: string;
+    dealerId?: any; 
+    managedWarehouseId?: string;
+    phone?: string;
+    logoUrl?: string;
+    createdAt?: string;
 }
 
 interface AuthContextType {
@@ -19,6 +23,7 @@ interface AuthContextType {
     isSuperAdmin: boolean;
     isDistributor: boolean;
     isDealer: boolean;
+    isWarehouseAdmin: boolean;
     role: string | null;
 }
 
@@ -86,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isAdmin = role === "Super Admin" || role === "Admin";
     const isDistributor = role === "Distributor";
     const isDealer = role === "Dealer";
+    const isWarehouseAdmin = role === "Warehouse Admin";
 
     // A robust loading state: if we have a token but no user yet, and no error, we are still authenticating
     const isInitialLoading = !!token && !user && !isError;
@@ -101,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             isSuperAdmin,
             isDistributor,
             isDealer,
+            isWarehouseAdmin,
             role
         }}>
             {children}

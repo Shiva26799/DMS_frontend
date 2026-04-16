@@ -18,7 +18,7 @@ import {
     markInstallationComplete,
     registerWarranty,
     cancelOrder,
-    updateOrderStatus,
+    // updateOrderStatus,
     uploadAdditionalDocument,
     deleteAdditionalDocument,
     deletePrimaryDocument,
@@ -50,7 +50,7 @@ router.post("/:id/additional-docs", isOrderOwnerOrAdmin, uploadOrderDocument.sin
 router.patch("/:id/approve-payment", isOrderOwnerOrAdmin, approveOrder);
 router.patch("/:id/approve-order", isOrderOwnerOrAdmin, finalizeOrderApproval);
 router.patch("/:id/upload-lovol-invoice", checkPermission("orders", "uploadLovolInvoice"), uploadOrderDocument.single("lovolInvoice"), uploadLovolInvoice);
-router.patch("/:id/status", checkPermission("orders", "statusOverride"), updateOrderStatus);
+// router.patch("/:id/status", checkPermission("orders", "statusOverride"), updateOrderStatus);
 router.patch("/:id/request-doc", checkPermission("orders", "requestDocs"), requestDocument);
 router.delete("/:id/additional-docs/:name", checkPermission("orders", "statusOverride"), deleteAdditionalDocument);
 router.delete("/:id/primary-docs/:type", checkPermission("orders", "statusOverride"), deletePrimaryDocument);

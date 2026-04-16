@@ -7,6 +7,7 @@ import { Lead } from "../models/lead.model.js";
 import { Inventory } from "../models/inventory.model.js";
 import { Maintenance } from "../models/maintenance.model.js";
 import { deductStockFromOrder, restoreStockForOrder } from "../services/inventory.service.js";
+import { sendPOUploadNotification } from "../services/mail.service.js";
 
 // Create a new order
 export const createOrder = async (req, res) => {
@@ -20,14 +21,14 @@ export const createOrder = async (req, res) => {
         } else {
             dealer = await Dealer.findById(dealerId);
         }
-        
+
         if (!dealer) {
             return res.status(404).json({ message: "Dealer or Distributor not found" });
         }
 
         if (buyerType === "Dealer" && dealer.status !== "Approved") {
-            return res.status(400).json({ 
-                message: `Order cannot be created. Dealer status is "${dealer.status}". Dealer must be "Approved" first.` 
+            return res.status(400).json({
+                message: `Order cannot be created. Dealer status is "${dealer.status}". Dealer must be "Approved" first.`
             });
         }
 
@@ -44,7 +45,7 @@ export const createOrder = async (req, res) => {
             }
             const price = Number(item.price);
             const quantity = Number(item.quantity) || 1;
-            
+
             if (warehouseId || orderSource === "Own Stock") {
                 const stockQuery = {
                     productId: item.productId,
@@ -53,8 +54,8 @@ export const createOrder = async (req, res) => {
                 };
                 const inventory = await Inventory.findOne(stockQuery);
                 if (!inventory || inventory.quantity < quantity) {
-                    return res.status(400).json({ 
-                        message: `Insufficient stock for product ${product.name}. Available: ${inventory?.quantity || 0}` 
+                    return res.status(400).json({
+                        message: `Insufficient stock for product ${product.name}. Available: ${inventory?.quantity || 0}`
                     });
                 }
             }
@@ -78,7 +79,7 @@ export const createOrder = async (req, res) => {
             assignedDistributorId: buyerType === "User" ? undefined : dealer.distributorId,
             leadId: leadId || undefined,
             customerName: customerName || undefined,
-            createdBy: req.user._id,
+            createdBy: req.user._id?._id || req.user._id,
             metadata: {
                 DealerName: buyerType === "User" ? dealer.name : dealer.companyName,
                 DistributorName: buyerType === "User" ? undefined : dealer.metadata?.DistributorName
@@ -149,19 +150,28 @@ export const getOrders = async (req, res) => {
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
 
+        const { role } = user;
         let query = {};
 
-        if (user.role === "Dealer") {
-            query = { dealerId: user.dealerId };
-        } else if (user.role === "Distributor") {
-            const dealers = await Dealer.find({ distributorId: user._id });
+        if (role === "Dealer") {
+            const userDealerId = user.dealerId?._id || user.dealerId;
+            const userId = user._id?._id || user._id;
+            query = { 
+                $or: [
+                    { createdBy: userId },
+                    { dealerId: userDealerId }
+                ]
+            };
+        } else if (role === "Distributor") {
+            const userId = user._id?._id || user._id;
+            const dealers = await Dealer.find({ distributorId: userId });
             const dealerIds = dealers.map(d => d._id);
             query = {
                 $or: [
                     { dealerId: { $in: dealerIds } },
-                    { dealerId: user._id },
-                    { assignedDistributorId: user._id },
-                    { createdBy: user._id }
+                    { dealerId: userId },
+                    { assignedDistributorId: userId },
+                    { createdBy: userId }
                 ]
             };
         }
@@ -213,33 +223,26 @@ export const getOrderById = async (req, res) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
-        // Security: Role-based access control for specific order
-        if (user.role === "Dealer" && String(order.dealerId?._id || order.dealerId) !== String(user.dealerId)) {
-            return res.status(403).json({ message: "Unauthorized access to this order." });
-        }
+        const { role } = user;
+        const orderDealerId = String(order.dealerId?._id || order.dealerId);
+        const userDealerId = user.dealerId ? String(user.dealerId._id || user.dealerId) : null;
+        const userId = String(user._id?._id || user._id);
 
-        let readOnly = false;
-
-        if (user.role === "Distributor") {
-            // Check if they are the buyer or the assigned distributor
-            if (String(order.dealerId?._id || order.dealerId) !== String(user._id)) {
-                const dealer = await Dealer.findOne({ _id: order.dealerId?._id || order.dealerId, distributorId: user._id });
-                if (!dealer) {
-                    return res.status(403).json({ message: "Unauthorized access to this order (not your dealer)." });
-                }
-            }
-            
-            // Distributors get read-only unless they are the creator or they are the buyer
-            if (
-                (!order.createdBy || String(order.createdBy) !== String(user._id)) && 
-                String(order.dealerId?._id || order.dealerId) !== String(user._id)
-            ) {
-                readOnly = true;
-            }
+        if (role === "Dealer") {
+             if (String(order.createdBy) !== userId && orderDealerId !== userDealerId) {
+                return res.status(403).json({ message: "Unauthorized: You can only view your own orders." });
+             }
+        } else if (role === "Distributor") {
+             // For Distributor, allow if it's their dealer or their assigned distributor
+             if (orderDealerId !== userId) {
+                 const isOwnDealer = await Dealer.findOne({ _id: orderDealerId, distributorId: userId });
+                 if (!isOwnDealer && String(order.assignedDistributorId) !== userId) {
+                     return res.status(403).json({ message: "Unauthorized: Order outside your regional network." });
+                 }
+             }
         }
 
         const orderObj = order.toObject();
-        orderObj.readOnly = readOnly;
         res.json(orderObj);
     } catch (error) {
         console.error("Fetch order by ID error:", error);
@@ -278,6 +281,20 @@ export const uploadPODocument = async (req, res) => {
         });
 
         await order.save();
+
+        // Trigger Email Notification (Non-blocking but logged)
+        try {
+            const populatedOrder = await Order.findById(order._id)
+                .populate("dealerId")
+                .populate("products.productId");
+
+            if (populatedOrder) {
+                await sendPOUploadNotification(populatedOrder);
+            }
+        } catch (mailError) {
+            console.error("Failed to send PO notification email:", mailError.message);
+        }
+
         res.json(order);
     } catch (error) {
         res.status(500).json({ message: "Error uploading PO", error: error.message });
@@ -332,11 +349,14 @@ export const approveOrder = async (req, res) => {
         const isDistributor = req.user.role === "Distributor";
         const isSuperAdmin = req.user.role === "Super Admin";
 
-        if (isDealer && String(order.dealerId) !== String(req.user.dealerId)) {
+        const userDealerId = req.user.dealerId?._id || req.user.dealerId;
+        const userId = req.user._id?._id || req.user._id;
+
+        if (isDealer && String(order.dealerId?._id || order.dealerId) !== String(userDealerId)) {
             return res.status(403).json({ message: "Unauthorized: You can only approve payments for your own orders." });
         }
 
-        if (isDistributor && String(order.assignedDistributorId) !== String(req.user._id)) {
+        if (isDistributor && String(order.assignedDistributorId?._id || order.assignedDistributorId) !== String(userId)) {
             return res.status(403).json({ message: "Unauthorized: You can only approve payments for your assigned dealers." });
         }
 
@@ -376,7 +396,9 @@ export const finalizeOrderApproval = async (req, res) => {
         const isSuperAdmin = req.user.role === "Super Admin";
         const isDistributor = req.user.role === "Distributor";
 
-        if (isDistributor && String(order.assignedDistributorId) !== String(req.user._id)) {
+        const userId = req.user._id?._id || req.user._id;
+
+        if (isDistributor && String(order.assignedDistributorId?._id || order.assignedDistributorId) !== String(userId)) {
             return res.status(403).json({ message: "Unauthorized: You can only approve orders for your assigned dealers." });
         }
 
@@ -559,7 +581,7 @@ export const registerWarranty = async (req, res) => {
         if (!order) return res.status(404).json({ message: "Order not found" });
 
         const { machineSerialNumber, engineNumber, warrantyStartDate, warrantyEndDate, warrantyMonths, maintenanceService } = req.body;
- 
+
         order.warrantyDetails = {
             machineSerialNumber,
             engineNumber,
@@ -647,10 +669,11 @@ export const cancelOrder = async (req, res) => {
         order.deliveryStatus = "Cancelled";
         order.stageProgress = 0;
 
+        const userName = req.user?.name || req.user?.role || "User";
         order.activityLog.push({
             action: "Order Cancelled",
-            note: `Order was cancelled by ${req.user?.name || "User"}`,
-            performedBy: req.user?.name || "User"
+            note: `Order was cancelled by ${userName}`,
+            performedBy: userName
         });
 
         // Restore Stock atomically if it was deducted
@@ -677,7 +700,8 @@ export const cancelOrder = async (req, res) => {
         session.endSession();
     }
 };
-// Admin overriding the order status (Stage Jumping)
+// Admin overriding the order status (Stage Jumping) - DISABLED
+/*
 export const updateOrderStatus = async (req, res) => {
     try {
         const { status, progress } = req.body;
@@ -700,6 +724,7 @@ export const updateOrderStatus = async (req, res) => {
         res.status(500).json({ message: "Error overriding status", error: error.message });
     }
 };
+*/
 
 // Upload Additional Document
 export const uploadAdditionalDocument = async (req, res) => {

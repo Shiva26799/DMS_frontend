@@ -52,8 +52,8 @@ export interface Dealer {
   distributorId?: string;
   distributorName?: string;
   metadata?: {
-    DistributorName?: string;
-    DealerName?: string;
+    distributorId?: string;
+    dealerId?: string;
   };
   companyType?: "LLP" | "Pvt Ltd" | "Proprietorship";
   kycDocuments?: Array<{
@@ -142,7 +142,7 @@ export interface Order {
     warrantyStartDate?: string;
     warrantyEndDate?: string;
     warrantyMonths?: number;
-    maintenanceMonths?: number;
+    maintenanceService?: string;
     warrantyDocument?: {
       url: string;
       uploadedAt: string;
@@ -159,6 +159,8 @@ export interface Order {
     url: string;
     uploadedAt: string;
   }>;
+  customerName?: string;
+  leadId?: any;
 }
 
 export interface WarrantyClaim {

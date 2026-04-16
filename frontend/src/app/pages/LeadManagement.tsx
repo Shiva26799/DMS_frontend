@@ -43,6 +43,7 @@ import { ProductCombobox } from "../components/ProductCombobox";
 import { useAuth } from "../context/AuthContext";
 import { useDealers } from "../hooks/useDealers";
 import Pagination from "../components/Pagination";
+import { useRBAC } from "../hooks/useRBAC";
 
 export interface Lead {
   _id: string;
@@ -86,6 +87,8 @@ export function LeadManagement() {
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
   const { isAdmin, isDistributor, isDealer, user: authUser } = useAuth();
+  const { checkPermission } = useRBAC();
+  
   const { data, isLoading: isLeadsLoading } = useLeads(page, limit);
   const leads = data?.leads || [];
   const pagination = data?.pagination;
@@ -181,13 +184,15 @@ export function LeadManagement() {
             Manage web and dealer-generated leads
           </p>
         </div>
-        <Button
-          className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => setIsDialogOpen(true)}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Lead
-        </Button>
+        {checkPermission("leads", "create") && (
+          <Button
+            className="bg-blue-600 hover:bg-blue-700"
+            onClick={() => setIsDialogOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Lead
+          </Button>
+        )}
       </div>
 
 
@@ -403,17 +408,19 @@ export function LeadManagement() {
                           {new Date(lead.createdAt).toLocaleDateString("en-IN")}
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setLeadToDelete(lead);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {checkPermission("leads", "delete") && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLeadToDelete(lead);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -552,6 +559,7 @@ export function LeadManagement() {
                     const value = e.target.value.replace(/[^a-zA-Z\s]/g, "");
                     setLeadForm({ ...leadForm, customerName: value });
                   }}
+                  placeholder="e.g. Rajesh Kumar"
                   title="Name can only contain letters and spaces"
                 />
               </div>
@@ -566,6 +574,7 @@ export function LeadManagement() {
                     const value = e.target.value.replace(/[^0-9]/g, "");
                     setLeadForm({ ...leadForm, phone: value });
                   }}
+                  placeholder="e.g. 9876543210"
                   title="Phone must contain only numbers"
                 />
               </div>
@@ -578,6 +587,7 @@ export function LeadManagement() {
                   id="email"
                   type="email"
                   value={leadForm.email}
+                  placeholder="e.g. rajesh@example.com"
                   onChange={(e) => setLeadForm({ ...leadForm, email: e.target.value })}
                 />
               </div>
@@ -646,6 +656,7 @@ export function LeadManagement() {
                 <Input
                   id="city"
                   value={leadForm.city}
+                  placeholder="e.g. Ludhiana"
                   onChange={(e) => setLeadForm({ ...leadForm, city: e.target.value })}
                 />
               </div>
@@ -656,6 +667,7 @@ export function LeadManagement() {
                   type="text"
                   required
                   value={leadForm.value || ""}
+                  placeholder="e.g. 500000"
                   onChange={(e) => {
                     const val = e.target.value.replace(/[^0-9]/g, "");
                     setLeadForm({ ...leadForm, value: val ? parseInt(val, 10) : 0 });
@@ -705,6 +717,7 @@ export function LeadManagement() {
               <Textarea
                 id="notes"
                 value={leadForm.notes}
+                placeholder="e.g. Interested in harvester for upcoming season, prefers morning calls..."
                 onChange={(e) => setLeadForm({ ...leadForm, notes: e.target.value })}
               />
             </div>

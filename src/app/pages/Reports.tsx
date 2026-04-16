@@ -26,59 +26,37 @@ import {
 } from "recharts";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-
-const revenueData = [
-  { month: "Aug", revenue: 12.5, target: 15 },
-  { month: "Sep", revenue: 18.2, target: 18 },
-  { month: "Oct", revenue: 22.5, target: 20 },
-  { month: "Nov", revenue: 19.8, target: 22 },
-  { month: "Dec", revenue: 25.3, target: 25 },
-  { month: "Jan", revenue: 28.5, target: 26 },
-  { month: "Feb", revenue: 32.1, target: 30 },
-];
-
-const regionData = [
-  { region: "Punjab", revenue: 45.2, orders: 120 },
-  { region: "Haryana", revenue: 38.5, orders: 95 },
-  { region: "UP", revenue: 35.8, orders: 88 },
-  { region: "AP", revenue: 42.3, orders: 110 },
-  { region: "Maharashtra", revenue: 48.7, orders: 125 },
-];
-
-const productMixData = [
-  { name: "HP-2000", value: 45, color: "#2563eb" },
-  { name: "HP-3000", value: 30, color: "#16a34a" },
-  { name: "HP-4000", value: 15, color: "#f97316" },
-  { name: "Spare Parts", value: 10, color: "#a855f7" },
-];
-
-const dealerRankingData = [
-  { dealer: "Maharashtra Agri", score: 95, revenue: 8.9 },
-  { dealer: "Punjab Agro", score: 92, revenue: 8.5 },
-  { dealer: "South India Equip", score: 88, revenue: 12.5 },
-  { dealer: "Haryana Farm Tech", score: 85, revenue: 6.8 },
-  { dealer: "UP Machinery Hub", score: 75, revenue: 9.5 },
-];
-
-const warrantyData = [
-  { month: "Aug", claims: 8, cost: 1.2 },
-  { month: "Sep", claims: 12, cost: 1.8 },
-  { month: "Oct", claims: 10, cost: 1.5 },
-  { month: "Nov", claims: 7, cost: 1.1 },
-  { month: "Dec", claims: 15, cost: 2.2 },
-  { month: "Jan", claims: 11, cost: 1.6 },
-  { month: "Feb", claims: 9, cost: 1.3 },
-];
+import { useAnalytics } from "../hooks/useAnalytics";
 
 export function Reports() {
+  const { data: analytics, isLoading: isAnalyticsLoading } = useAnalytics();
   const [isLoading, setIsLoading] = useState(true);
+  const [dateRange, setDateRange] = useState("6months");
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    if (!isAnalyticsLoading) {
+      setIsLoading(false);
+    }
+  }, [isAnalyticsLoading]);
 
-  const [dateRange, setDateRange] = useState("6months");
+  const overview = analytics?.overview || {
+    activeDealers: 0,
+    recentOrders: 0,
+    ordersGrowth: 0,
+    revenue: 0,
+    revenueGrowth: 0,
+    avgOrderValue: 0,
+    avgOrderValueGrowth: 0,
+    totalRevenue: 0,
+    monthlyOrders: 0,
+    inProgressOrders: 0
+  };
+
+  const salesTrend = analytics?.salesTrend || [];
+  const regionData = analytics?.regions || [];
+  const productMixData = analytics?.productMix || [];
+  const dealerRankingData = analytics?.dealers || [];
+  const warrantyTrend = analytics?.warranty || [];
 
   return (
     <div className="p-6 space-y-6">
@@ -114,12 +92,12 @@ export function Reports() {
       </div>
 
       {/* Summary KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
-          { label: "Total Revenue", value: "₹156.4Cr", icon: DollarSign, trend: "+18.2%", color: "blue" },
-          { label: "Total Orders", value: "538", icon: TrendingUp, trend: "+12.5%", color: "green" },
-          { label: "Avg Order Value", value: "₹29.1L", icon: Calendar, trend: "+5.3%", color: "orange" },
-          { label: "Growth Rate", value: "18.2%", icon: TrendingUp, trend: "YoY Growth", color: "purple" }
+          { label: "Total Revenue", value: `₹${((overview?.totalRevenue || 0) / 10000000).toFixed(1)}Cr`, icon: DollarSign, trend: `${overview?.revenueGrowth >= 0 ? "+" : ""}${overview?.revenueGrowth || 0}%`, color: "blue" },
+          { label: "Total Orders", value: (overview?.monthlyOrders ?? overview?.recentOrders ?? 0).toString(), icon: TrendingUp, trend: `${overview?.ordersGrowth >= 0 ? "+" : ""}${overview?.ordersGrowth || 0}%`, color: "green" },
+          { label: "In Progress Orders", value: (overview?.inProgressOrders || 0).toString(), icon: Calendar, trend: "Active", color: "orange" },
+          { label: "Avg Order Value", value: `₹${((overview?.totalRevenue || 0) / (overview?.monthlyOrders || 1) / 100000).toFixed(1)}L`, icon: Calendar, trend: `${overview?.avgOrderValueGrowth >= 0 ? "+" : ""}${overview?.avgOrderValueGrowth || 0}%`, color: "orange" },
         ].map((kpi, i) => (
           <Card key={i} className="p-4">
             <div className="flex items-center gap-3">
@@ -133,7 +111,7 @@ export function Reports() {
                 ) : (
                   <p className="text-xl font-bold text-gray-900">{kpi.value}</p>
                 )}
-                <p className={`text-xs ${kpi.trend.startsWith("+") ? "text-green-600" : "text-gray-600"}`}>
+                <p className={`text-xs ${kpi.trend.startsWith("+") ? "text-green-600" : "text-red-600"}`}>
                   {kpi.trend} {kpi.trend.includes("%") && !kpi.trend.includes("YoY") ? "vs last period" : ""}
                 </p>
               </div>
@@ -166,7 +144,7 @@ export function Reports() {
               <Skeleton className="h-[300px] w-full" />
             ) : (
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={revenueData}>
+                <LineChart data={salesTrend}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
@@ -229,7 +207,7 @@ export function Reports() {
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie
-                    data={productMixData}
+                    data={analytics?.productMix || []}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
@@ -238,7 +216,7 @@ export function Reports() {
                     fill="#8884d8"
                     dataKey="value"
                   >
-                    {productMixData.map((entry, index) => (
+                    {productMixData.map((entry: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
@@ -343,7 +321,7 @@ export function Reports() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {dealerRankingData.map((dealer, index) => (
+                  {dealerRankingData.map((dealer: any, index: number) => (
                     <tr key={index} className="hover:bg-gray-50">
                       <td className="px-4 py-4">
                         <span className="text-sm font-bold text-gray-900">
@@ -356,25 +334,23 @@ export function Reports() {
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`text-sm font-medium ${
-                              dealer.score >= 90
+                            className={`text-sm font-medium ${dealer.score >= 90
                                 ? "text-green-600"
                                 : dealer.score >= 80
-                                ? "text-blue-600"
-                                : "text-orange-600"
-                            }`}
+                                  ? "text-blue-600"
+                                  : "text-orange-600"
+                              }`}
                           >
                             {dealer.score}%
                           </span>
                           <div className="w-20 bg-gray-200 rounded-full h-2">
                             <div
-                              className={`h-2 rounded-full ${
-                                dealer.score >= 90
+                              className={`h-2 rounded-full ${dealer.score >= 90
                                   ? "bg-green-600"
                                   : dealer.score >= 80
-                                  ? "bg-blue-600"
-                                  : "bg-orange-600"
-                              }`}
+                                    ? "bg-blue-600"
+                                    : "bg-orange-600"
+                                }`}
                               style={{ width: `${dealer.score}%` }}
                             ></div>
                           </div>
@@ -421,7 +397,7 @@ export function Reports() {
               </Button>
             </div>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={warrantyData}>
+              <LineChart data={warrantyTrend}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
                 <YAxis yAxisId="left" />

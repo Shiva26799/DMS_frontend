@@ -37,11 +37,12 @@ import { toast } from "sonner";
 
 import { useAuth } from "../context/AuthContext";
 import { ProductCombobox } from "../components/ProductCombobox";
+import { OrderForm } from "../components/OrderForm";
 
 export function DealerDetail() {
   const { id } = useParams();
   const { getDealer, approveDealer } = useDealers();
-  const { getOrdersByDealer, cancelOrder } = useOrders();
+  const { getOrdersByDealer, cancelOrder, addOrder } = useOrders();
   const { isAdmin } = useAuth();
   const dealer = getDealer(id || "");
   const dealerOrders = getOrdersByDealer(id || "");
@@ -59,34 +60,8 @@ export function DealerDetail() {
   const [newCreditLimit, setNewCreditLimit] = useState(dealer?.creditLimit || "");
   const [isUpdatingCredit, setIsUpdatingCredit] = useState(false);
 
-  // Create Order State
-  const { addOrder } = useOrders();
   const [isOrderDialogOpen, setIsOrderDialogOpen] = useState(false);
-  const [orderFormData, setOrderFormData] = useState({
-    products: [{ productId: "", quantity: 1, price: "" as any }],
-  });
-  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [activePerformanceMetric, setActivePerformanceMetric] = useState<"revenue" | "orders">("revenue");
-
-  const addProductRow = () => {
-    setOrderFormData({
-      ...orderFormData,
-      products: [...orderFormData.products, { productId: "", quantity: 1, price: "" as any }],
-    });
-  };
-
-  const removeProductRow = (index: number) => {
-    if (orderFormData.products.length <= 1) return;
-    const newProducts = [...orderFormData.products];
-    newProducts.splice(index, 1);
-    setOrderFormData({ ...orderFormData, products: newProducts });
-  };
-
-  const updateProductRow = (index: number, field: string, value: any) => {
-    const newProducts = [...orderFormData.products];
-    newProducts[index] = { ...newProducts[index], [field]: value };
-    setOrderFormData({ ...orderFormData, products: newProducts });
-  };
 
   const handleUpdateCredit = async () => {
     if (!dealer) return;
@@ -99,34 +74,6 @@ export function DealerDetail() {
       toast.error("Failed to update credit limit");
     } finally {
       setIsUpdatingCredit(false);
-    }
-  };
-
-  const handleCreateOrder = async () => {
-    if (orderFormData.products.some(p => !p.productId)) {
-      toast.error("Please select a product for all items.");
-      return;
-    }
-
-    try {
-      setIsCreatingOrder(true);
-      await addOrder({
-        dealerId: dealer!.id,
-        products: orderFormData.products.map(p => ({
-          productId: p.productId,
-          quantity: Number(p.quantity) || 1,
-          price: Number(p.price) || 0,
-        })),
-      });
-      toast.success("Order created successfully!");
-      setOrderFormData({
-        products: [{ productId: "", quantity: 1, price: "" as any }],
-      });
-      setIsOrderDialogOpen(false);
-    } catch (error) {
-      toast.error("Failed to create order");
-    } finally {
-      setIsCreatingOrder(false);
     }
   };
 
@@ -152,8 +99,7 @@ export function DealerDetail() {
 
   const dealerClaims = claims.filter((c: any) =>
     c.dealerId?._id === dealer.id ||
-    c.dealerId === dealer.id ||
-    c.metadata?.DealerName === dealer.name
+    c.dealerId === dealer.id
   );
   const creditLimit = Number(dealer.creditLimit) || 0;
   const outstandingAmount = Number(dealer.outstandingAmount) || 0;
@@ -694,92 +640,34 @@ export function DealerDetail() {
               )}
               <Dialog open={isOrderDialogOpen} onOpenChange={setIsOrderDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="w-full justify-start" variant="outline">
-                    Create Order
-                  </Button>
+                  <div className="w-full">
+                    <Button 
+                      className="w-full justify-start" 
+                      variant="outline"
+                      disabled={dealer.status !== "Approved"}
+                    >
+                      Create Order
+                    </Button>
+                    {dealer.status !== "Approved" && (
+                      <p className="text-[10px] text-orange-600 mt-1 italic px-1">
+                        * Dealer must be "Approved" to create orders.
+                      </p>
+                    )}
+                  </div>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[750px] max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>Create Order for {dealer.name}</DialogTitle>
+                    <DialogTitle>Create New Order</DialogTitle>
                   </DialogHeader>
-                  <div className="grid gap-6 py-4">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-sm font-semibold">Products <span className="text-red-500">*</span></Label>
-                        <Button type="button" variant="outline" size="sm" onClick={addProductRow} className="h-8 text-blue-600 border-blue-200 hover:bg-blue-50">
-                          <Plus className="w-3.5 h-3.5 mr-1" /> Add Product
-                        </Button>
-                      </div>
-                      <div className="space-y-2">
-                        {orderFormData.products.map((row, index) => (
-                          <div key={index} className="flex gap-2 items-center group">
-                            <div className="flex-grow grid grid-cols-12 gap-2 items-center border p-2 rounded-md bg-white shadow-sm">
-                              <div className="col-span-6">
-                                <ProductCombobox
-                                  onSelect={(selected) => {
-                                    const product = Array.isArray(selected) ? selected[0] : selected;
-                                    updateProductRow(index, "productId", product?.id || "");
-                                    if (product?.price) {
-                                      updateProductRow(index, "price", product.price);
-                                    }
-                                  }}
-                                  placeholder="Select product..."
-                                />
-                              </div>
-                              <div className="col-span-2">
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  placeholder="Qty"
-                                  value={row.quantity}
-                                  onChange={(e) => updateProductRow(index, "quantity", e.target.value)}
-                                  className="h-9"
-                                />
-                              </div>
-                              <div className="col-span-4">
-                                <div className="relative">
-                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
-                                  <Input
-                                    type="number"
-                                    placeholder="Price"
-                                    value={row.price}
-                                    onChange={(e) => updateProductRow(index, "price", e.target.value)}
-                                    className="h-9 pl-6"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-9 w-9 text-gray-400 hover:text-red-500 hover:bg-red-50 shrink-0"
-                              onClick={() => removeProductRow(index)}
-                              disabled={orderFormData.products.length <= 1}
-                            >
-                              <Plus className="w-4 h-4 rotate-45" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <DialogFooter className="mt-6 border-t pt-4">
-                    <div className="flex-1 flex items-center text-sm">
-                      <span className="text-gray-500 mr-2">Estimate Total:</span>
-                      <span className="text-lg font-bold text-blue-600">
-                        ₹{orderFormData.products.reduce((sum, p) => sum + (Number(p.price) * Number(p.quantity) || 0), 0).toLocaleString()}
-                      </span>
-                    </div>
-                    <Button
-                      type="button"
-                      disabled={isCreatingOrder}
-                      className="bg-blue-600 hover:bg-blue-700 px-8"
-                      onClick={handleCreateOrder}
-                    >
-                      {isCreatingOrder ? "Creating..." : "Submit Order"}
-                    </Button>
-                  </DialogFooter>
+                  <OrderForm
+                    initialData={{ dealerId: dealer.id }}
+                    onSubmit={async (data) => {
+                      await addOrder(data);
+                      setIsOrderDialogOpen(false);
+                      toast.success("Order created successfully!");
+                    }}
+                    onCancel={() => setIsOrderDialogOpen(false)}
+                  />
                 </DialogContent>
               </Dialog>
 
@@ -799,12 +687,28 @@ export function DealerDetail() {
                       <Input
                         id="creditLimit"
                         type="number"
-                        placeholder="Enter new credit limit"
+                        placeholder="e.g. 5000000"
                         value={newCreditLimit}
                         onChange={(e) => setNewCreditLimit(e.target.value)}
                       />
+                      {newCreditLimit && Number(newCreditLimit) > 0 && (
+                        <p className="text-[10px] text-blue-600 font-medium italic">
+                          {(() => {
+                            const num = Number(newCreditLimit);
+                            const fmt = new Intl.NumberFormat('en-IN', {
+                              style: 'currency',
+                              currency: 'INR',
+                              maximumFractionDigits: 0
+                            }).format(num);
+                            let suffix = "";
+                            if (num >= 10000000) suffix = ` (${(num / 10000000).toFixed(2)} Cr)`;
+                            else if (num >= 100000) suffix = ` (${(num / 100000).toFixed(2)} L)`;
+                            return `${fmt}${suffix}`;
+                          })()}
+                        </p>
+                      )}
                       <p className="text-xs text-gray-500">
-                        Current: ₹{Number(dealer.creditLimit || 0).toLocaleString()}
+                        Current: ₹{Number(dealer.creditLimit || 0).toLocaleString('en-IN')}
                       </p>
                     </div>
                   </div>

@@ -13,8 +13,9 @@ export const checkPermission = (module, action) => {
                 return res.status(401).json({ message: "Unauthorized - Role not found" });
             }
 
-            // Super Admin bypasses all checks
+            // Super Admin bypasses all checks but still needs the permission level set
             if (user.role === "Super Admin") {
+                req.permissionValue = "Full";
                 return next();
             }
 

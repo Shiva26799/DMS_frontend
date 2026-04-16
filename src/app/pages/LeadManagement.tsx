@@ -42,6 +42,8 @@ import { useDebounce } from "../hooks/useDebounce";
 import { ProductCombobox } from "../components/ProductCombobox";
 import { useAuth } from "../context/AuthContext";
 import { useDealers } from "../hooks/useDealers";
+import Pagination from "../components/Pagination";
+import { useRBAC } from "../hooks/useRBAC";
 
 export interface Lead {
   _id: string;
@@ -66,6 +68,10 @@ export interface Lead {
     companyName: string;
     ownerName?: string;
   };
+  distributorId?: {
+    _id: string;
+    name: string;
+  };
   followUps?: any[];
   createdAt: string;
 }
@@ -76,10 +82,16 @@ export function LeadManagement() {
   const [filterSource, setFilterSource] = useState<string>("all");
   const [filterRegion, setFilterRegion] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
   const { isAdmin, isDistributor, isDealer, user: authUser } = useAuth();
-  const { data: leads = [], isLoading: isLeadsLoading } = useLeads();
+  const { checkPermission } = useRBAC();
+  
+  const { data, isLoading: isLeadsLoading } = useLeads(page, limit);
+  const leads = data?.leads || [];
+  const pagination = data?.pagination;
   const { data: dealers = [] } = useDealers();
   const addLeadMutation = useAddLead();
   const deleteLeadMutation = useDeleteLead();
@@ -172,13 +184,15 @@ export function LeadManagement() {
             Manage web and dealer-generated leads
           </p>
         </div>
-        <Button
-          className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => setIsDialogOpen(true)}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Lead
-        </Button>
+        {checkPermission("leads", "create") && (
+          <Button
+            className="bg-blue-600 hover:bg-blue-700"
+            onClick={() => setIsDialogOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Lead
+          </Button>
+        )}
       </div>
 
 
@@ -210,7 +224,6 @@ export function LeadManagement() {
                 <SelectItem value="assigned">Assigned</SelectItem>
                 <SelectItem value="discussion">Discussion</SelectItem>
                 <SelectItem value="negotiation">Negotiation</SelectItem>
-                <SelectItem value="won">Won</SelectItem>
                 <SelectItem value="lost">Lost</SelectItem>
               </SelectContent>
             </Select>
@@ -228,14 +241,6 @@ export function LeadManagement() {
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Region" />
               </SelectTrigger>
-              {/* <SelectContent>
-                <SelectItem value="all">All Regions</SelectItem>
-                <SelectItem value="Punjab">Punjab</SelectItem>
-                <SelectItem value="Haryana">Haryana</SelectItem>
-                <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
-                <SelectItem value="Andhra Pradesh">Andhra Pradesh</SelectItem>
-                <SelectItem value="Maharashtra">Maharashtra</SelectItem>
-              </SelectContent> */}
               <SelectContent>
                 <SelectItem value="all">All Regions</SelectItem>
                 {regions.map((region) => (
@@ -280,6 +285,9 @@ export function LeadManagement() {
                     </th>
                     <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                       Source
+                    </th>
+                    <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
+                      Distributor
                     </th>
                     <th className="text-left text-xs font-medium text-gray-600 uppercase px-6 py-3">
                       Dealer
@@ -360,6 +368,9 @@ export function LeadManagement() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-600">
+                          {lead.distributorId?.name || "—"}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
                           {lead.dealerId?.companyName || "—"}
                         </td>
 
@@ -397,107 +408,129 @@ export function LeadManagement() {
                           {new Date(lead.createdAt).toLocaleDateString("en-IN")}
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setLeadToDelete(lead);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {checkPermission("leads", "delete") && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLeadToDelete(lead);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))
                   )}
                 </tbody>
-
               </table>
             </div>
+            {pagination && (
+              <Pagination
+                currentPage={pagination.page}
+                totalPages={pagination.pages}
+                onPageChange={setPage}
+                totalItems={pagination.total}
+                itemsPerPage={limit}
+              />
+            )}
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-            {Object.entries(leadsByStatus).map(([status, leads]) => (
-              <div key={status}>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-gray-900">{status}</h3>
-                  <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {leads.length}
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  {isLeadsLoading ? (
-                    Array.from({ length: 3 }).map((_, i) => (
-                      <Card key={i} className="p-4">
-                        <div className="space-y-4">
-                          <div className="flex justify-between">
-                            <Skeleton className="h-4 w-24" />
-                            <Skeleton className="h-4 w-4" />
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+              {Object.entries(leadsByStatus).map(([status, leads]) => (
+                <div key={status}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-gray-900">{status}</h3>
+                    <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                      {leads.length}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {isLeadsLoading ? (
+                      Array.from({ length: 3 }).map((_, i) => (
+                        <Card key={i} className="p-4">
+                          <div className="space-y-4">
+                            <div className="flex justify-between">
+                              <Skeleton className="h-4 w-24" />
+                              <Skeleton className="h-4 w-4" />
+                            </div>
+                            <Skeleton className="h-3 w-16" />
+                            <div className="flex justify-between">
+                              <Skeleton className="h-4 w-12 rounded" />
+                              <Skeleton className="h-4 w-12" />
+                            </div>
                           </div>
-                          <Skeleton className="h-3 w-16" />
-                          <div className="flex justify-between">
-                            <Skeleton className="h-4 w-12 rounded" />
-                            <Skeleton className="h-4 w-12" />
-                          </div>
-                        </div>
-                      </Card>
-                    ))
-                  ) : (
-                    leads.map((lead: Lead) => (
-                      <div key={lead._id} className="relative group">
-                        <Link key={lead._id} to={`/leads/${lead._id}`}>
-                          <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
-                            <div className="flex justify-between items-start mb-1">
-                              <p className="text-sm font-medium text-gray-900 truncate pr-4">
-                                {lead.customerName}
-                              </p>
-                              <div onClick={(e) => e.preventDefault()}>
-                                <button
-                                  className="p-1 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => setLeadToDelete(lead)}
+                        </Card>
+                      ))
+                    ) : (
+                      leads.map((lead: Lead) => (
+                        <div key={lead._id} className="relative group">
+                          <Link key={lead._id} to={`/leads/${lead._id}`}>
+                            <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
+                              <div className="flex justify-between items-start mb-1">
+                                <p className="text-sm font-medium text-gray-900 truncate pr-4">
+                                  {lead.customerName}
+                                </p>
+                                <div onClick={(e) => e.preventDefault()}>
+                                  <button
+                                    className="p-1 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => setLeadToDelete(lead)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center mb-2">
+                                <p className="text-xs text-gray-600">
+                                  {lead.product.split(" ")[1]}
+                                </p>
+                                <StatusBadge status={lead.rating} />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${lead.source === "Web"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : "bg-blue-100 text-blue-700"
+                                    }`}
                                 >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                  {lead.source}
+                                </span>
+                                <span className="text-xs font-medium text-gray-900">
+                                  {formatCurrency(lead.value)}
+                                </span>
                               </div>
-                            </div>
-                            <div className="flex justify-between items-center mb-2">
-                              <p className="text-xs text-gray-600">
-                                {lead.product.split(" ")[1]}
-                              </p>
-                              <StatusBadge status={lead.rating} />
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${lead.source === "Web"
-                                  ? "bg-purple-100 text-purple-700"
-                                  : "bg-blue-100 text-blue-700"
-                                  }`}
-                              >
-                                {lead.source}
-                              </span>
-                              <span className="text-xs font-medium text-gray-900">
-                                {formatCurrency(lead.value)}
-                              </span>
-                            </div>
-                            {lead.dealerId && (
-                              <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5 text-[10px] text-gray-500">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                <span className="font-medium">Assigned:</span>
-                                <span className="truncate">{lead.dealerId.companyName}</span>
-                              </div>
-                            )}
-                          </Card>
-                        </Link>
-                      </div>
-                    ))
-                  )}
+                              {lead.dealerId && (
+                                <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5 text-[10px] text-gray-500">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                  <span className="font-medium">Assigned:</span>
+                                  <span className="truncate">{lead.dealerId.companyName}</span>
+                                </div>
+                              )}
+                            </Card>
+                          </Link>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-
+              ))}
+            </div>
+            {pagination && (
+              <div className="mt-6">
+                <Pagination
+                  currentPage={pagination.page}
+                  totalPages={pagination.pages}
+                  onPageChange={setPage}
+                  totalItems={pagination.total}
+                  itemsPerPage={limit}
+                />
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </>
 
@@ -526,6 +559,7 @@ export function LeadManagement() {
                     const value = e.target.value.replace(/[^a-zA-Z\s]/g, "");
                     setLeadForm({ ...leadForm, customerName: value });
                   }}
+                  placeholder="e.g. Rajesh Kumar"
                   title="Name can only contain letters and spaces"
                 />
               </div>
@@ -540,6 +574,7 @@ export function LeadManagement() {
                     const value = e.target.value.replace(/[^0-9]/g, "");
                     setLeadForm({ ...leadForm, phone: value });
                   }}
+                  placeholder="e.g. 9876543210"
                   title="Phone must contain only numbers"
                 />
               </div>
@@ -552,6 +587,7 @@ export function LeadManagement() {
                   id="email"
                   type="email"
                   value={leadForm.email}
+                  placeholder="e.g. rajesh@example.com"
                   onChange={(e) => setLeadForm({ ...leadForm, email: e.target.value })}
                 />
               </div>
@@ -620,6 +656,7 @@ export function LeadManagement() {
                 <Input
                   id="city"
                   value={leadForm.city}
+                  placeholder="e.g. Ludhiana"
                   onChange={(e) => setLeadForm({ ...leadForm, city: e.target.value })}
                 />
               </div>
@@ -630,6 +667,7 @@ export function LeadManagement() {
                   type="text"
                   required
                   value={leadForm.value || ""}
+                  placeholder="e.g. 500000"
                   onChange={(e) => {
                     const val = e.target.value.replace(/[^0-9]/g, "");
                     setLeadForm({ ...leadForm, value: val ? parseInt(val, 10) : 0 });
@@ -679,6 +717,7 @@ export function LeadManagement() {
               <Textarea
                 id="notes"
                 value={leadForm.notes}
+                placeholder="e.g. Interested in harvester for upcoming season, prefers morning calls..."
                 onChange={(e) => setLeadForm({ ...leadForm, notes: e.target.value })}
               />
             </div>

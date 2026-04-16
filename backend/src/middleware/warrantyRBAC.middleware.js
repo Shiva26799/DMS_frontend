@@ -3,8 +3,9 @@ import { Dealer } from "../models/dealer.model.js";
 
 /**
  * Middleware: Ensures the requesting user can manage a specific warranty claim.
+ * Uses Safe ID extraction to handle populated Mongoose objects.
  * - Super Admin: Full access.
- * - Distributor: Access only to claims from their subordinate dealers.
+ * - Distributor: Access to claims from their subordinate dealers, or their own claims.
  * - Dealer: Access only to their own claims.
  */
 export const canManageClaim = async (req, res, next) => {
@@ -18,19 +19,29 @@ export const canManageClaim = async (req, res, next) => {
         const claim = await WarrantyClaim.findById(req.params.id);
         if (!claim) return res.status(404).json({ message: "Claim not found" });
 
+        // Safe ID extraction
+        const userId = String(user._id?._id || user._id);
+        const userDealerId = user.dealerId ? String(user.dealerId._id || user.dealerId) : null;
+        const claimDealerId = String(claim.dealerId?._id || claim.dealerId);
+
         if (user.role === "Dealer") {
-            if (String(claim.dealerId) !== String(user.dealerId)) {
+            if (claimDealerId !== userDealerId) {
                 return res.status(403).json({ message: "Access denied: This claim does not belong to your dealership." });
             }
             return next();
         }
 
         if (user.role === "Distributor") {
-            const dealer = await Dealer.findOne({ _id: claim.dealerId, distributorId: user._id });
-            if (!dealer) {
-                return res.status(403).json({ message: "Access denied: This dealer is not under your distribution network." });
+            // Distributor's own claim (buyerType === "User")
+            if (claimDealerId === userId) {
+                return next();
             }
-            return next();
+            // Check if dealer belongs to this distributor
+            const dealer = await Dealer.findOne({ _id: claim.dealerId?._id || claim.dealerId, distributorId: user._id?._id || user._id });
+            if (dealer) {
+                return next();
+            }
+            return res.status(403).json({ message: "Access denied: This dealer is not under your distribution network." });
         }
 
         return res.status(403).json({ message: "Access denied." });

@@ -3,8 +3,8 @@ import { Dealer } from "../models/dealer.model.js";
 
 /**
  * Middleware: Ensures the requesting user is either the Super Admin,
- * or the creator (owner) of the order.
- * Distributors who did NOT create the order get read-only access (blocked on mutations).
+ * the creator (owner) of the order, or the linked dealer/distributor.
+ * Uses Safe ID extraction to handle populated Mongoose objects.
  */
 export const isOrderOwnerOrAdmin = async (req, res, next) => {
     try {
@@ -23,14 +23,38 @@ export const isOrderOwnerOrAdmin = async (req, res, next) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
+        // Safe ID extraction (handles both raw ObjectId and populated objects)
+        const userId = String(user._id?._id || user._id);
+        const userDealerId = user.dealerId ? String(user.dealerId._id || user.dealerId) : null;
+        const orderDealerId = String(order.dealerId?._id || order.dealerId);
+        const orderCreatedBy = order.createdBy ? String(order.createdBy?._id || order.createdBy) : null;
+
         // Check if the current user is the creator of this order
-        if (order.createdBy && String(order.createdBy) === String(user._id)) {
+        if (orderCreatedBy && orderCreatedBy === userId) {
             return next();
         }
 
-        // Dealer who is linked to this order (legacy orders without createdBy)
-        if (user.role === "Dealer" && String(order.dealerId) === String(user.dealerId)) {
+        // Dealer who is linked to this order
+        if (user.role === "Dealer" && userDealerId && orderDealerId === userDealerId) {
             return next();
+        }
+
+        // Distributor: allow if order belongs to one of their dealers or assigned to them
+        if (user.role === "Distributor") {
+            // Check if distributor is the buyer
+            if (orderDealerId === userId) {
+                return next();
+            }
+            // Check if the order's dealer belongs to this distributor
+            const isOwnDealer = await Dealer.findOne({ _id: order.dealerId, distributorId: user._id });
+            if (isOwnDealer) {
+                return next();
+            }
+            // Check assignedDistributorId
+            const orderDistId = order.assignedDistributorId ? String(order.assignedDistributorId?._id || order.assignedDistributorId) : null;
+            if (orderDistId && orderDistId === userId) {
+                return next();
+            }
         }
 
         // If none of the above, the user is NOT the owner → read-only

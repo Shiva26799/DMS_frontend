@@ -24,11 +24,14 @@ export function Login() {
             onSuccess: (data) => {
                 const { token, user } = data;
                 login(token, user);
-                toast.success("Successfully logged in");
-                navigate("/");
+                if (user.role === "Warehouse Admin") {
+                    navigate("/inventory");
+                } else {
+                    navigate("/");
+                }
             },
             onError: (error: any) => {
-                toast.error(error.response?.data?.message || "Login failed");
+                // Inline error display handles this
             }
         });
     };

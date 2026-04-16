@@ -3,7 +3,7 @@ import { checkJWTToken } from "../middleware/index.js";
 import { uploadLogo } from "../middleware/s3-upload.middleware.js";
 import {
     getCompanyInfo, updateCompanyInfo, uploadCompanyLogo,
-    getUsers, createUser, updateUser, deleteUser
+    getUsers, createUser, updateUser, deleteUser, uploadUserLogo, uploadGenericImage
 } from "../controllers/settings.controller.js";
 import {
     getWarehouses, createWarehouse, updateWarehouse, deleteWarehouse
@@ -12,6 +12,8 @@ import { authorize } from "../middleware/authorize.js";
 
 const router = express.Router();
 
+router.post("/upload", checkJWTToken, authorize("Super Admin", "Distributor"), uploadLogo.single("logo"), uploadGenericImage);
+
 router.get("/company", checkJWTToken, authorize("Super Admin"), getCompanyInfo);
 router.put("/company", checkJWTToken, authorize("Super Admin"), updateCompanyInfo);
 router.put("/company/logo", checkJWTToken, authorize("Super Admin"), uploadLogo.single("logo"), uploadCompanyLogo);
@@ -19,6 +21,7 @@ router.put("/company/logo", checkJWTToken, authorize("Super Admin"), uploadLogo.
 router.get("/users", checkJWTToken, authorize("Super Admin", "Distributor"), getUsers);
 router.post("/users", checkJWTToken, authorize("Super Admin", "Distributor"), createUser);
 router.put("/users/:id", checkJWTToken, authorize("Super Admin", "Distributor"), updateUser);
+router.put("/users/:id/logo", checkJWTToken, authorize("Super Admin", "Distributor"), uploadLogo.single("logo"), uploadUserLogo);
 router.delete("/users/:id", checkJWTToken, authorize("Super Admin", "Distributor"), deleteUser);
 
 router.get("/warehouses", checkJWTToken, authorize("Super Admin"), getWarehouses);

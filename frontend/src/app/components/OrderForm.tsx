@@ -87,13 +87,14 @@ export function OrderForm({ initialData, onSubmit, onCancel, title = "Create New
   // Pre-select buyer for Dealers and Distributors
   useEffect(() => {
     if (initialData?.dealerId) {
-      const isDistributor = distributors.some((dist: any) => dist._id === initialData.dealerId);
+      const isDistributor = distributors?.some((dist: any) => dist._id === initialData.dealerId);
       updateFormData({ buyerType: isDistributor ? "User" : "Dealer" });
     } else if (user) {
       if (role === "Dealer" && user.dealerId) {
-        updateFormData({ dealerId: user.dealerId, buyerType: "Dealer" });
+        const dId = typeof user.dealerId === 'object' ? user.dealerId._id : user.dealerId;
+        updateFormData({ dealerId: dId, buyerType: "Dealer" });
       } else if (role === "Distributor") {
-        updateFormData({ dealerId: user.id, buyerType: "User" });
+        updateFormData({ dealerId: user.id || user._id, buyerType: "User" });
       }
     }
   }, [user, role, initialData, distributors]);
@@ -143,6 +144,11 @@ export function OrderForm({ initialData, onSubmit, onCancel, title = "Create New
 
     if (formData.orderSource === "Warehouse" && !formData.warehouseId) {
       setError("Please select a warehouse.");
+      return;
+    }
+
+    if (!formData.leadId && !customerSearch) {
+      setError("Please select a customer or lead.");
       return;
     }
 
@@ -197,35 +203,42 @@ export function OrderForm({ initialData, onSubmit, onCancel, title = "Create New
           <Select
             value={formData.dealerId}
             onValueChange={(value) => {
-              const isDistributor = distributors.some((dist: any) => dist._id === value);
+              const isDistributor = distributors?.some((dist: any) => dist._id === value) || (role === "Distributor" && value === (user?.id || user?._id));
               updateFormData({ dealerId: value, buyerType: isDistributor ? "User" : "Dealer" });
             }}
-            disabled={!!initialData?.dealerId || role === "Dealer" || role === "Distributor"}
+            disabled={!!initialData?.dealerId || role === "Dealer"}
           >
             <SelectTrigger id="dealer" className="h-10">
               <SelectValue placeholder="Choose a buyer (Dealer/Distributor)" />
             </SelectTrigger>
             <SelectContent>
-              {/* List Distributors explicitly so order source logic matches them */}
-              {distributors?.length > 0 && (
-                <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Distributors</div>
+              {/* List Distributors explicitly */}
+              {(isSuperAdmin || role === "Distributor") && (
+                <>
+                  <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Distributors</div>
+                  {distributors
+                    ?.filter((dist: any) => isSuperAdmin || dist._id === (user?.id || user?._id))
+                    .map((dist: any) => (
+                      <SelectItem key={dist._id} value={dist._id}>
+                        {dist.name} (Distributor)
+                      </SelectItem>
+                    ))}
+                </>
               )}
-              {distributors?.map((dist: any) => (
-                <SelectItem key={dist._id} value={dist._id}>
-                  {dist.name} (Distributor)
-                </SelectItem>
-              ))}
 
+              {/* List Dealers */}
               {dealers?.length > 0 && (
-                <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider mt-2 border-t pt-2">Dealers</div>
+                <>
+                  <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider mt-2 border-t pt-2">Dealers</div>
+                  {dealers
+                    .filter((d) => (isSuperAdmin || role === "Distributor" || d.id === (typeof user.dealerId === 'object' ? user.dealerId._id : user.dealerId)) && d.status === "Approved")
+                    .map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name || d.companyName}
+                      </SelectItem>
+                    ))}
+                </>
               )}
-              {dealers
-                .filter((d) => d.status === "Approved")
-                .map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name || d.companyName}
-                  </SelectItem>
-                ))}
             </SelectContent>
           </Select>
         </div>
@@ -234,7 +247,7 @@ export function OrderForm({ initialData, onSubmit, onCancel, title = "Create New
         <div className="grid gap-2 md:col-span-2" ref={customerDropdownRef}>
           <Label className="text-sm font-semibold">
             <UserCircle className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />
-            Customer / Lead
+            Customer / Lead <span className="text-red-500">*</span>
           </Label>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -358,14 +371,25 @@ export function OrderForm({ initialData, onSubmit, onCancel, title = "Create New
                     onSelect={(selected) => {
                       const product: any = Array.isArray(selected) ? selected[0] : selected;
                       const newProducts = [...formData.products];
-                      newProducts[index] = {
-                        ...newProducts[index],
-                        productId: product?.id || "",
-                        name: product?.name || "",
-                        availableStock: product?.stock || 0,
-                        price: product?.price || newProducts[index].price
-                      };
-                      setFormData({ ...formData, products: newProducts });
+                      
+                      if (!product) {
+                        newProducts[index] = {
+                          ...newProducts[index],
+                          productId: "",
+                          name: "",
+                          availableStock: undefined,
+                          price: ""
+                        };
+                      } else {
+                        newProducts[index] = {
+                          ...newProducts[index],
+                          productId: product.id || "",
+                          name: product.name || "",
+                          availableStock: product.stock || 0,
+                          price: product.price || newProducts[index].price
+                        };
+                      }
+                      updateFormData({ products: newProducts });
                     }}
                     placeholder={
                       formData.orderSource === "Warehouse" && !formData.warehouseId 

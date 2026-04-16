@@ -5,6 +5,17 @@ import {
   TrendingUp,
   AlertCircle,
   Clock,
+  ArrowUpRight,
+  ArrowDownRight,
+  Filter,
+  Download,
+  MoreVertical,
+  Calendar,
+  DollarSign,
+  Briefcase,
+  Wrench,
+  ChevronRight,
+  AlertTriangle,
 } from "lucide-react";
 import { KPICard } from "../components/KPICard";
 import { Card } from "../components/ui/card";
@@ -13,6 +24,9 @@ import {
   Line,
   BarChart,
   Bar,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -30,51 +44,42 @@ import { useLeads } from "../hooks/useLeads";
 import { useWarranty } from "../context/WarrantyContext";
 import { useDealers } from "../hooks/useDealers";
 import { useAuth } from "../context/AuthContext";
-
-const salesData = [
-  { month: "Aug", sales: 12.5, target: 15 },
-  { month: "Sep", sales: 18.2, target: 18 },
-  { month: "Oct", sales: 22.5, target: 20 },
-  { month: "Nov", sales: 19.8, target: 22 },
-  { month: "Dec", sales: 25.3, target: 25 },
-  { month: "Jan", sales: 28.5, target: 26 },
-  { month: "Feb", sales: 32.1, target: 30 },
-];
-
-const inventoryData = [
-  { product: "HP-2000", inStock: 15, reserved: 3 },
-  { product: "HP-3000", inStock: 8, reserved: 2 },
-  { product: "HP-4000", inStock: 5, reserved: 1 },
-  { product: "Spare Parts", inStock: 230, reserved: 40 },
-];
+import { useAnalytics } from "../hooks/useAnalytics";
 
 export function ExecutiveDashboard() {
-  const { user, isAdmin, isDistributor } = useAuth();
+  const { data: analytics, isLoading: isAnalyticsLoading, fetchLeads } = useAnalytics();
+  const { isAdmin } = useAuth();
   const { orders, isLoading: isOrdersLoading } = useOrders();
   const { data: leads = [], isLoading: isLeadsLoading } = useLeads();
   const { claims = [], isLoading: isClaimsLoading } = useWarranty();
   const { data: dealers = [], isLoading: isDealersLoading } = useDealers();
+  const [leadRange, setLeadRange] = useState("6");
 
-  const isLoading = isOrdersLoading || isLeadsLoading || isClaimsLoading || isDealersLoading;
+  const isLoading = isAnalyticsLoading || isOrdersLoading || isLeadsLoading || isClaimsLoading || isDealersLoading;
 
-  const recentOrders = orders.slice(0, 5);
-  // Real-time metrics
-  const monthlyOrders = orders.filter(o => {
-    const orderDate = new Date(o.orderDate);
-    const now = new Date();
-    return orderDate.getMonth() === now.getMonth() && orderDate.getFullYear() === now.getFullYear();
-  }).length;
+  const overview = analytics?.overview || {
+    activeDealers: 0,
+    monthlyOrders: 0,
+    pendingApprovals: 0,
+    openWarranties: 0,
+    ordersGrowth: 0,
+    recentOrders: 0
+  };
 
-  const pendingApprovals = orders.filter(o => o.currentStage === "Order Approval" || o.currentStage === "Payment Verification").length;
-  const openWarranties = claims.filter(c => c.status !== "Closed").length;
+  const leadsAnalytics = analytics?.leads || { sources: [], conversion: [] };
 
+  useEffect(() => {
+    fetchLeads(leadRange);
+  }, [leadRange, fetchLeads]);
+
+  const recentOrders = orders.slice(0, 3);
   const pendingClaims = claims.filter(
     (c) => c.status === "Complaint Received" || c.status === "Technician Assigned"
-  ).slice(0, 5);
+  ).slice(0, 3);
 
-  const lowStockItems = mockInventory.filter(
-    (i) => i.status === "Low" || i.status === "Critical"
-  );
+  const lowStockItems = (analytics?.inventory || []).filter(
+    (i: any) => i.status === "Low" || i.status === "Critical"
+  ).slice(0, 3);
 
   return (
     <div className="p-6 space-y-6">
@@ -103,26 +108,25 @@ export function ExecutiveDashboard() {
           <>
             <KPICard
               title={isAdmin ? "Total Dealers" : "Active Dealers"}
-              value={isAdmin ? dealers.length.toString() : dealers.length.toString()}
+              value={(overview?.activeDealers ?? dealers.length).toString()}
               icon={Package}
               color="blue"
             />
             <KPICard
               title="Recent Orders"
-              value={orders.length.toString()}
+              value={(overview?.monthlyOrders ?? overview?.recentOrders ?? orders.length).toString()}
               icon={ShoppingCart}
-              trend={{ value: `${monthlyOrders} this month`, positive: true }}
               color="green"
             />
             <KPICard
               title="Pending Approvals"
-              value={pendingApprovals.toString()}
+              value={(overview?.pendingApprovals ?? 0).toString()}
               icon={Clock}
               color="orange"
             />
             <KPICard
               title="Open Warranty"
-              value={openWarranties.toString()}
+              value={(overview?.openWarranties ?? 0).toString()}
               icon={AlertCircle}
               color="orange"
             />
@@ -132,59 +136,73 @@ export function ExecutiveDashboard() {
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sales Trend */}
+        {/* Lead vs Customer Conversion */}
         <Card className="p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Sales Trend (₹Cr)
+            Lead to Customer Conversion
           </h3>
           {isLoading ? (
             <Skeleton className="h-[250px] w-full" />
           ) : (
             <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={salesData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
+              <BarChart data={leadsAnalytics.conversion}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} interval={0} height={50} tick={{ dy: 5 }} />
+                <YAxis fontSize={12} tickLine={false} axisLine={false} />
                 <Tooltip />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="sales"
-                  stroke="#2563eb"
-                  strokeWidth={2}
-                  name="Actual Sales"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="target"
-                  stroke="#16a34a"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  name="Target"
-                />
-              </LineChart>
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: '10px' }} />
+                <Bar dataKey="leads" fill="#2563eb" name="Leads" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="customers" fill="#16a34a" name="Customers" radius={[4, 4, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           )}
         </Card>
 
-        {/* Inventory Movement */}
+        {/* Lead Source Distribution */}
         <Card className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Inventory Status
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Lead Source Distribution
+            </h3>
+            <select
+              value={leadRange}
+              onChange={(e) => setLeadRange(e.target.value)}
+              className="text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              <option value="1">1 Month</option>
+              <option value="3">3 Months</option>
+              <option value="6">6 Months</option>
+              <option value="12">1 Year</option>
+            </select>
+          </div>
           {isLoading ? (
             <Skeleton className="h-[250px] w-full" />
           ) : (
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={inventoryData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="product" />
-                <YAxis />
+              <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                <Pie
+                  data={leadsAnalytics.sources}
+                  cx="40%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                >
+                  {leadsAnalytics.sources.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
                 <Tooltip />
-                <Legend />
-                <Bar dataKey="inStock" fill="#2563eb" name="In Stock" />
-                <Bar dataKey="reserved" fill="#f97316" name="Reserved" />
-              </BarChart>
+                <Legend 
+                  layout="vertical" 
+                  align="right" 
+                  verticalAlign="middle" 
+                  iconType="circle"
+                  formatter={(value) => <span className="text-sm text-gray-700">{value}</span>}
+                />
+              </PieChart>
             </ResponsiveContainer>
           )}
         </Card>
@@ -207,7 +225,7 @@ export function ExecutiveDashboard() {
           </div>
           <div className="space-y-3">
             {isLoading ? (
-              Array(5).fill(0).map((_, i) => (
+              Array(3).fill(0).map((_, i) => (
                 <div key={i} className="border border-gray-100 rounded-lg p-3 space-y-2">
                   <div className="flex justify-between">
                     <Skeleton className="h-4 w-20" />
@@ -262,7 +280,7 @@ export function ExecutiveDashboard() {
           </div>
           <div className="space-y-3">
             {isLoading ? (
-              Array(5).fill(0).map((_, i) => (
+              Array(3).fill(0).map((_, i) => (
                 <div key={i} className="border border-gray-100 rounded-lg p-3 space-y-2">
                   <div className="flex justify-between">
                     <Skeleton className="h-4 w-24" />
@@ -311,7 +329,7 @@ export function ExecutiveDashboard() {
           </div>
           <div className="space-y-3">
             {isLoading ? (
-              Array(5).fill(0).map((_, i) => (
+              Array(3).fill(0).map((_, i) => (
                 <div key={i} className="border border-gray-100 rounded-lg p-3 space-y-2">
                   <div className="flex justify-between">
                     <Skeleton className="h-4 w-24" />
@@ -325,24 +343,32 @@ export function ExecutiveDashboard() {
                 </div>
               ))
             ) : (
-              lowStockItems.map((item) => (
+              lowStockItems.map((item: any) => (
                 <div
-                  key={item.id}
-                  className="border border-gray-200 rounded-lg p-3"
+                  key={item.sku}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {item.sku}
-                      </p>
-                      <p className="text-xs text-gray-600">{item.warehouseName}</p>
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`p-2 rounded-full ${item.status === "Critical" ? "bg-red-100 text-red-600" : "bg-orange-100 text-orange-600"}`}
+                    >
+                      <AlertTriangle className="h-4 w-4" />
                     </div>
-                    <StatusBadge status={item.status} />
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-900">
+                        {item.product}
+                      </h4>
+                      <p className="text-xs text-gray-500">SKU: {item.sku}</p>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500">Available: {item.available}</span>
-                    <span className="text-red-600 font-medium">
-                      Reorder: {item.reorderLevel}
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-gray-900">
+                      {item.inStock} units
+                    </p>
+                    <span
+                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${item.status === "Critical" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"}`}
+                    >
+                      {item.status}
                     </span>
                   </div>
                 </div>

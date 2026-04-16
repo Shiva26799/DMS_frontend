@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Link } from "react-router";
 import * as XLSX from "xlsx";
-import { Plus, Filter, Search, Package, Loader2, Image as ImageIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Filter, Search, Package, Loader2, Image as ImageIcon } from "lucide-react";
+import Pagination from "../components/Pagination";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
@@ -61,8 +62,8 @@ export function ProductCatalogue() {
   });
 
   const products = data?.products || [];
-  const totalProducts = data?.totalProducts || 0;
-  const totalPages = data?.totalPages || 0;
+  const totalProducts = data?.pagination?.total || 0;
+  const totalPages = data?.pagination?.pages || 0;
   const counts = data?.counts || { total: 0, Harvester: 0, "Spare Part": 0 };
 
   const { data: warehouses = [], isLoading: isWarehousesLoading } = useWarehouses();
@@ -439,25 +440,6 @@ export function ProductCatalogue() {
                       }
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Stock</span>
-                    <span
-                      className={`text-sm font-medium ${product.stockAvailable > 10
-                        ? "text-green-600"
-                        : product.stockAvailable > 5
-                          ? "text-orange-600"
-                          : "text-red-600"
-                        }`}
-                    >
-                      {product.stockAvailable} units
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Warranty</span>
-                    <span className="text-sm font-medium text-gray-900">
-                      {product.warrantyPeriod || "N/A"}
-                    </span>
-                  </div>
                 </div>
               </Card>
             </Link>
@@ -467,54 +449,13 @@ export function ProductCatalogue() {
 
       {/* Pagination Controls */}
       {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500 whitespace-nowrap">Results per page:</span>
-              <Select
-                value={itemsPerPage.toString()}
-                onValueChange={(val) => setItemsPerPage(parseInt(val))}
-              >
-                <SelectTrigger className="h-8 w-[70px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[12, 24, 48, 96].map((size) => (
-                    <SelectItem key={size} value={size.toString()}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="text-sm text-gray-500">
-              Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, totalProducts)}</span> of <span className="font-medium">{totalProducts}</span> products
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p: number) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-            >
-              <ChevronLeft className="w-4 h-4 mr-1" />
-              Previous
-            </Button>
-            <div className="text-sm font-medium text-gray-700 px-2">
-              Page {currentPage} of {totalPages}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p: number) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-            >
-              Next
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          </div>
-        </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={totalProducts}
+          itemsPerPage={itemsPerPage}
+        />
       )}
 
       {/* Add Product Dialog */}
@@ -591,31 +532,12 @@ export function ProductCatalogue() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="warehouse">Warehouse *</Label>
-                  <Select value={formData.warehouseId} onValueChange={(val) => setFormData({ ...formData, warehouseId: val })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Warehouse" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {warehouses.map((w: any) => (
-                        <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="price">Price (₹) *</Label>
                   <Input id="price" type="number" required value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} placeholder="e.g. 1850000" />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="stock">Initial Stock *</Label>
-                  <Input id="stock" type="number" required value={formData.stockAvailable} onChange={e => setFormData({ ...formData, stockAvailable: e.target.value })} placeholder="e.g. 15" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="warranty">Warranty Period</Label>
-                  <Input id="warranty" value={formData.warrantyPeriod} onChange={e => setFormData({ ...formData, warrantyPeriod: e.target.value })} placeholder="e.g. 2 Years" />
-                </div>
+
+
               </div>
 
               <div className="space-y-2">
@@ -667,7 +589,8 @@ export function ProductCatalogue() {
               <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={actionLoading || !formData.name || !formData.sku || !formData.category || !formData.price || !formData.stockAvailable} className="bg-blue-600 hover:bg-blue-700">
+              <Button type="submit" disabled={actionLoading || !formData.name || !formData.sku || !formData.category || !formData.price} className="bg-blue-600 hover:bg-blue-700">
+
                 {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                 Save Product
               </Button>
@@ -687,19 +610,7 @@ export function ProductCatalogue() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Target Warehouse *</Label>
-              <Select value={bulkWarehouseId} onValueChange={setBulkWarehouseId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Warehouse" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map((w: any) => (
-                    <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
 
             <div className="py-8 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center space-y-4 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer relative">
               <input

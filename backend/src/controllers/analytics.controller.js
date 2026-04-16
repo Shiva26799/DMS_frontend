@@ -7,15 +7,19 @@ import mongoose from "mongoose";
 
 const getAuthScope = async (user) => {
     if (user.role === "Super Admin") return {};
-    if (user.role === "Dealer") return { dealerId: user.dealerId };
+    if (user.role === "Dealer") {
+        const userDealerId = user.dealerId?._id || user.dealerId;
+        return { dealerId: userDealerId };
+    }
     if (user.role === "Distributor") {
-        const dealers = await Dealer.find({ distributorId: user._id });
+        const userId = user._id?._id || user._id;
+        const dealers = await Dealer.find({ distributorId: userId });
         const dealerIds = dealers.map(d => d._id);
         return {
             $or: [
                 { dealerId: { $in: dealerIds } },
-                { dealerId: user._id },
-                { assignedDistributorId: user._id }
+                { dealerId: userId },
+                { assignedDistributorId: userId }
             ]
         };
     }
@@ -81,9 +85,10 @@ export const getRegionalPerformance = async (req, res) => {
     try {
         const user = req.user;
         let matchStage = {};
-        if (user.role === "Dealer") matchStage = { dealerId: user.dealerId };
+        if (user.role === "Dealer") matchStage = { dealerId: user.dealerId?._id || user.dealerId };
         else if (user.role === "Distributor") {
-            const dealers = await Dealer.find({ distributorId: user._id });
+            const userId = user._id?._id || user._id;
+            const dealers = await Dealer.find({ distributorId: userId });
             matchStage = { dealerId: { $in: dealers.map(d => d._id) } };
         }
 
@@ -107,7 +112,8 @@ export const getDealerRankings = async (req, res) => {
         if (user.role === "Dealer") return res.json([]);
         let matchStage = {};
         if (user.role === "Distributor") {
-            const dealers = await Dealer.find({ distributorId: user._id });
+            const userId = user._id?._id || user._id;
+            const dealers = await Dealer.find({ distributorId: userId });
             matchStage = { dealerId: { $in: dealers.map(d => d._id) } };
         }
 
@@ -149,10 +155,14 @@ export const getInventoryStats = async (req, res) => {
     try {
         const user = req.user;
         let matchStage = {};
-        if (user.role === "Dealer") matchStage = { ownerId: user.dealerId, ownerType: "Dealer" };
+        if (user.role === "Dealer") {
+            const userDealerId = user.dealerId?._id || user.dealerId;
+            matchStage = { ownerId: userDealerId, ownerType: "Dealer" };
+        }
         else if (user.role === "Distributor") {
-            const dealers = await Dealer.find({ distributorId: user._id });
-            matchStage = { $or: [{ ownerId: { $in: dealers.map(d => d._id) } }, { ownerId: user._id }] };
+            const userId = user._id?._id || user._id;
+            const dealers = await Dealer.find({ distributorId: userId });
+            matchStage = { $or: [{ ownerId: { $in: dealers.map(d => d._id) } }, { ownerId: userId }] };
         }
 
         const stats = await Inventory.aggregate([
